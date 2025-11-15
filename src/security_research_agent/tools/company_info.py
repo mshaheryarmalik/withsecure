@@ -35,15 +35,18 @@ def lookup_whois(domain: str) -> Dict[str, Any]:
         
         w = whois.whois(domain)
         
+        has_data = w.creation_date or w.registrar or w.org
+        
         return {
             "domain": domain,
+            "found": bool(has_data),  # Add for consistency
             "creation_date": str(w.creation_date) if w.creation_date else None,
             "registrar": w.registrar,
             "organization": w.org,
             "source_label": SourceLabel.INDEPENDENT.value
         }
     except Exception as e:
-        return {"domain": domain, "error": str(e)}
+        return {"domain": domain, "found": False, "error": str(e)}
 
 
 @tool

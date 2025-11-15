@@ -254,12 +254,13 @@ def check_fedramp(product_name: str) -> Dict[str, Any]:
             
             return {
                 "authorized": True,
+                "status": level or "Not specified",  # Add status for consistency
                 "level": level,
                 "url": results['results'][0].get('url'),
                 "source_label": SourceLabel.INDEPENDENT.value
             }
         
-        return {"authorized": False}
+        return {"authorized": False, "status": "Not authorized"}
     except Exception as e:
         return {"authorized": False, "error": str(e)}
 

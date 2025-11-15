@@ -1,0 +1,246 @@
+{
+  "summary": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 1,
+    "total": 19
+  },
+  "results": [
+    {
+      "tool": "resolve_entity (name)",
+      "status": "PASSED",
+      "result_keys": [
+        "product_name",
+        "original_name",
+        "vendor_name",
+        "website",
+        "verified",
+        "input_type",
+        "sha1_hash",
+        "file_reputation",
+        "confidence",
+        "reasoning",
+        "input_interpretation"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "resolve_entity (URL)",
+      "status": "PASSED",
+      "result_keys": [
+        "product_name",
+        "original_name",
+        "vendor_name",
+        "website",
+        "verified",
+        "input_type",
+        "sha1_hash",
+        "file_reputation",
+        "confidence",
+        "reasoning",
+        "product_type"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_cves",
+      "status": "PASSED",
+      "result_keys": [
+        "total_cves",
+        "critical_count",
+        "high_count",
+        "medium_count",
+        "low_count",
+        "trend",
+        "recent_cves",
+        "cisa_kev_count",
+        "citation",
+        "source_label",
+        "data_available"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "check_cisa_kev",
+      "status": "PASSED",
+      "result_keys": [
+        "kev_count",
+        "total_kev_entries",
+        "vulnerabilities",
+        "last_updated",
+        "source",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_github_advisories",
+      "status": "PASSED",
+      "result_keys": [
+        "advisories",
+        "advisory_count",
+        "source_label",
+        "data_available",
+        "error"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "fetch_vendor_security_info",
+      "status": "PASSED",
+      "result_keys": [
+        "vendor_name",
+        "founded_year",
+        "security_page_found",
+        "security_contact",
+        "claimed_certifications",
+        "security_advisories_found",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "fetch_terms_of_service",
+      "status": "PASSED",
+      "result_keys": [
+        "found",
+        "url",
+        "key_terms",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "fetch_privacy_policy",
+      "status": "PASSED",
+      "result_keys": [
+        "found",
+        "url",
+        "gdpr_compliance",
+        "ccpa_compliance",
+        "data_retention",
+        "third_party_sharing",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "fetch_dpa",
+      "status": "PASSED",
+      "result_keys": [
+        "found",
+        "url",
+        "subprocessors_listed",
+        "scc_mentioned",
+        "breach_notification",
+        "gdpr_mentioned",
+        "content_preview",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "check_fedramp",
+      "status": "PASSED",
+      "result_keys": [
+        "authorized",
+        "status",
+        "level",
+        "url",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_malwarebazaar",
+      "status": "PASSED",
+      "result_keys": [
+        "found",
+        "malware_detected",
+        "samples_found"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_urlhaus",
+      "status": "PASSED",
+      "result_keys": [
+        "threat_found",
+        "malicious_urls_found"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_alienvault_otx",
+      "status": "PASSED",
+      "result_keys": [
+        "pulse_count",
+        "reputation",
+        "threat_found",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_security_incidents",
+      "status": "SKIPPED",
+      "reason": "Missing API key: HIBP_API_KEY"
+    },
+    {
+      "tool": "search_security_news",
+      "status": "PASSED",
+      "result_keys": [
+        "incidents",
+        "incident_count",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "search_us_cert_advisories",
+      "status": "PASSED",
+      "result_keys": [
+        "advisories",
+        "advisory_count",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "lookup_whois",
+      "status": "PASSED",
+      "result_keys": [
+        "domain",
+        "found",
+        "creation_date",
+        "registrar",
+        "organization",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "search_company_info",
+      "status": "PASSED",
+      "result_keys": [
+        "found",
+        "summary",
+        "sources",
+        "source_label"
+      ],
+      "result_type": "dict"
+    },
+    {
+      "tool": "search_alternatives",
+      "status": "PASSED",
+      "result_keys": [
+        "alternatives",
+        "alternative_count",
+        "alternatives_found",
+        "source_label"
+      ],
+      "result_type": "dict"
+    }
+  ],
+  "timestamp": "2025-11-15T19:33:32.439969"
+}

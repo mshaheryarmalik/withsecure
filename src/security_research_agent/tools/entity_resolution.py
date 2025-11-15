@@ -84,6 +84,7 @@ def _resolve_from_sha1(sha1_hash: str) -> Dict[str, Any]:
         url = f"{VIRUSTOTAL_API_URL}/files/{sha1_hash}"
         response = requests.get(url, headers=headers, timeout=10)
         
+        print(response.json())
         if response.status_code == 200:
             data = response.json()
             attributes = data.get('data', {}).get('attributes', {})
@@ -394,7 +395,7 @@ def _resolve_from_name(name: str) -> Dict[str, Any]:
                 results = tavily.search(query=search_query, max_results=5)
                 
                 search_results = "\n\n".join([
-                    f"[{i+1}] {r['title']}\nURL: {r['url']}\n{r['content'][:250]}..."
+                    f"[{i+1}] {r['title']}\nURL: {r['url']}\n{r['content']}..."
                     for i, r in enumerate(results.get('results', []))
                 ])
             except Exception as e:

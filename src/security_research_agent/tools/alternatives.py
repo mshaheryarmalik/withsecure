@@ -53,6 +53,7 @@ def search_alternatives(product_name: str) -> Dict[str, Any]:
         return {
             "alternatives": alternatives,
             "alternative_count": len(alternatives),
+            "alternatives_found": len(alternatives),  # Alias for consistency
             "source_label": SourceLabel.INDEPENDENT.value
         }
     except Exception as e:

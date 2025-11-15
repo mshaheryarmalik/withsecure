@@ -46,14 +46,16 @@ def lookup_malwarebazaar(sha1_hash: Optional[str] = None, product_name: Optional
             result = response.json()
             
             if result.get('query_status') == 'ok':
+                data = result.get('data', [])
                 return {
                     "found": True,
                     "malware_detected": True,
-                    "data": result.get('data', []),
+                    "samples_found": len(data) if isinstance(data, list) else 0,  # Add for consistency
+                    "data": data,
                     "source_label": SourceLabel.INDEPENDENT.value
                 }
         
-        return {"found": False, "malware_detected": False}
+        return {"found": False, "malware_detected": False, "samples_found": 0}
     except Exception as e:
         return {"found": False, "error": str(e)}
 
@@ -73,12 +75,13 @@ def lookup_urlhaus(domain: str) -> Dict[str, Any]:
             if result.get('query_status') == 'ok':
                 urls = result.get('urls', [])
                 return {
+                    "threat_found": len(urls) > 0,  # Add for consistency
                     "malicious_urls_found": len(urls),
                     "urls": urls[:5],  # First 5
                     "source_label": SourceLabel.INDEPENDENT.value
                 }
         
-        return {"malicious_urls_found": 0}
+        return {"threat_found": False, "malicious_urls_found": 0}
     except Exception as e:
         return {"malicious_urls_found": 0, "error": str(e)}
 
