@@ -3,11 +3,11 @@
 import json
 import os
 import re
-from typing import Any, Dict
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -84,7 +84,6 @@ def _resolve_from_sha1(sha1_hash: str) -> Dict[str, Any]:
         url = f"{VIRUSTOTAL_API_URL}/files/{sha1_hash}"
         response = requests.get(url, headers=headers, timeout=10)
         
-        print(response.json())
         if response.status_code == 200:
             data = response.json()
             attributes = data.get('data', {}).get('attributes', {})
@@ -93,6 +92,48 @@ def _resolve_from_sha1(sha1_hash: str) -> Dict[str, Any]:
             meaningful_name = attributes.get('meaningful_name', '')
             names = attributes.get('names', [])
             file_name = meaningful_name or (names[0] if names else 'Unknown')
+            
+            # Extract vendor information from multiple possible sources
+            vendor_name = "Unknown"
+            
+            # Try to get vendor from signature info (for signed files)
+            signature_info = attributes.get('signature_info', {})
+            if signature_info:
+                vendor_name = (
+                    signature_info.get('subject', {}).get('CN', '') or
+                    signature_info.get('signers', '') or
+                    signature_info.get('verified', '')
+                )
+            
+            # Try to get vendor from exiftool data (metadata)
+            if not vendor_name or vendor_name == "Unknown":
+                exiftool = attributes.get('exiftool', {})
+                if exiftool:
+                    vendor_name = (
+                        exiftool.get('CompanyName', '') or
+                        exiftool.get('LegalCopyright', '') or
+                        exiftool.get('ProductName', '') or
+                        "Unknown"
+                    )
+            
+            # Try to get vendor from PE info (for Windows executables)
+            if not vendor_name or vendor_name == "Unknown":
+                pe_info = attributes.get('pe_info', {})
+                if pe_info:
+                    resource_details = pe_info.get('resource_details', [{}])
+                    for resource in resource_details:
+                        if resource.get('type') == 'RT_VERSION':
+                            lang_strings = resource.get('lang_sublang', {})
+                            for lang_data in lang_strings.values():
+                                vendor_name = (
+                                    lang_data.get('CompanyName', '') or
+                                    lang_data.get('LegalCopyright', '') or
+                                    "Unknown"
+                                )
+                                if vendor_name and vendor_name != "Unknown":
+                                    break
+                        if vendor_name and vendor_name != "Unknown":
+                            break
             
             # Get detection stats
             last_analysis = attributes.get('last_analysis_stats', {})
@@ -111,9 +152,24 @@ def _resolve_from_sha1(sha1_hash: str) -> Dict[str, Any]:
             tags = attributes.get('tags', [])
             file_type = attributes.get('type_description', 'Unknown')
             
+            # Clean up vendor name (remove copyright symbols, years, etc.)
+            if vendor_name and vendor_name != "Unknown":
+                # Remove copyright symbols and years
+                vendor_name = re.sub(r'©|\(c\)|copyright|\d{4}', '', vendor_name, flags=re.IGNORECASE).strip()
+                # Remove multiple spaces
+                vendor_name = re.sub(r'\s+', ' ', vendor_name).strip()
+                # Take first meaningful part if comma-separated
+                if ',' in vendor_name:
+                    vendor_name = vendor_name.split(',')[0].strip()
+            
+            # Create original_name for CVE searches (normalized, lowercase)
+            # Extract base product name without version numbers or extensions
+            original_name = re.sub(r'[^a-z0-9\-_]', '', file_name.lower().split()[0])
+            
             return {
                 "product_name": file_name,
-                "vendor_name": "Unknown",
+                "original_name": original_name,  # Normalized for CVE searches
+                "vendor_name": vendor_name,
                 "website": None,
                 "verified": True,
                 "input_type": InputType.SHA1.value,
@@ -194,45 +250,37 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
                 "confidence": ConfidenceLevel.LOW.value,
             }
         
-        # Fetch the page to extract content
+        # Fetch the page content using Tavily
+        tavily_api_key = os.getenv("TAVILY_API_KEY")
         page_content = ""
         page_title = ""
-        meta_description = ""
         
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser')
+        if tavily_api_key:
+            try:
+                # Use Tavily to search for the URL/domain to get enriched content
+                tavily = create_tavily_client(tavily_api_key)
+                search_query = f"site:{domain} OR {url}"
+                results = tavily.search(query=search_query, max_results=3)
                 
-                # Extract page title
-                if soup.title:
-                    page_title = soup.title.string or ""
-                
-                # Extract meta description
-                meta_desc = soup.find('meta', attrs={'name': 'description'})
-                if meta_desc:
-                    meta_description = meta_desc.get('content', '')
-                
-                # Extract Open Graph data
-                og_title = soup.find('meta', property='og:title')
-                og_description = soup.find('meta', property='og:description')
-                og_site_name = soup.find('meta', property='og:site_name')
-                
-                if og_title:
-                    page_title = og_title.get('content', page_title)
-                if og_description:
-                    meta_description = og_description.get('content', meta_description)
-                
-                # Get some visible text content (first few paragraphs)
-                paragraphs = soup.find_all('p')[:3]
-                page_content = ' '.join([p.get_text().strip() for p in paragraphs])[:500]
-                
-        except Exception as e:
-            page_content = f"Could not fetch page: {str(e)}"
+                # Extract title and content from Tavily results
+                if results.get('results'):
+                    first_result = results['results'][0]
+                    page_title = first_result.get('title', '')
+                    page_content = first_result.get('content', '')
+                    
+                    # Combine multiple results for better context
+                    all_content = []
+                    for result in results['results'][:3]:
+                        if result.get('content'):
+                            all_content.append(result['content'])
+                    
+                    if all_content:
+                        page_content = ' '.join(all_content)[:800]
+                        
+            except Exception as e:
+                page_content = f"Could not fetch page via Tavily: {str(e)}"
+        else:
+            page_content = "Tavily API key not configured"
         
         # Use LLM with page data
         model = init_chat_model(
@@ -248,8 +296,7 @@ Domain: {domain}
 
 PAGE DATA:
 Title: {page_title}
-Description: {meta_description}
-Content Preview: {page_content[:300]}
+Content Preview: {page_content[:500]}
 
 Based on this information, determine:
 1. What is the official product name? (e.g., "Figma" not "Figma - The Collaborative...")
@@ -534,3 +581,281 @@ CRITICAL RULES:
             "error": f"LLM resolution failed: {str(e)}"
         }
 
+
+# ============================================================================
+# COMPREHENSIVE MULTI-INPUT RESOLUTION
+# ============================================================================
+
+def _names_match(name1: Optional[str], name2: Optional[str], threshold: float = 0.7) -> bool:
+    """Fuzzy match product/vendor names to detect consistency.
+    
+    Args:
+        name1: First name to compare
+        name2: Second name to compare
+        threshold: Similarity threshold (0.0-1.0)
+        
+    Returns:
+        True if names match or are similar enough
+    """
+    if not name1 or not name2:
+        return False
+    
+    # Normalize
+    n1 = name1.lower().strip()
+    n2 = name2.lower().strip()
+    
+    # Exact match
+    if n1 == n2:
+        return True
+    
+    # One contains the other
+    if n1 in n2 or n2 in n1:
+        return True
+    
+    # Fuzzy matching using sequence matcher
+    similarity = SequenceMatcher(None, n1, n2).ratio()
+    return similarity >= threshold
+
+
+def _detect_primary_input_type(input_fields: List[str]) -> str:
+    """Determine primary input type for logging.
+    
+    Args:
+        input_fields: List of field names that were provided by user
+        
+    Returns:
+        Primary input type string
+    """
+    if "sha1_hash" in input_fields:
+        return "sha1"
+    elif "website" in input_fields:
+        return "url"
+    elif "product_name" in input_fields or "vendor_name" in input_fields:
+        return "name"
+    else:
+        return "unknown"
+
+
+def _map_confidence_to_level(confidence: float) -> str:
+    """Map confidence score to level string.
+    
+    Args:
+        confidence: Confidence score (0.0-1.0)
+        
+    Returns:
+        Confidence level: "high", "medium", or "low"
+    """
+    if confidence >= 0.8:
+        return "high"
+    elif confidence >= 0.5:
+        return "medium"
+    else:
+        return "low"
+
+
+@tool
+def resolve_entity_complete(
+    product_name: Optional[str] = None,
+    vendor_name: Optional[str] = None,
+    website: Optional[str] = None,
+    sha1_hash: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Resolve ALL 4 core entity fields from any combination of inputs.
+    Deterministic resolution with validation and conflict detection.
+    
+    This function can handle all 15 possible input combinations:
+    - Single inputs: SHA1, product, vendor, or URL
+    - Dual inputs: Any 2 of the 4 fields
+    - Triple inputs: Any 3 of the 4 fields  
+    - All 4 inputs: Complete validation mode
+    
+    Args:
+        product_name: Product name if known (optional)
+        vendor_name: Vendor/company name if known (optional)
+        website: Official website URL if known (optional)
+        sha1_hash: File SHA1 hash if known (optional)
+        
+    Returns:
+        Complete entity dict with all 4 core fields populated, sources tracked,
+        and confidence scores per field
+    """
+    
+    # Initialize entity with tracking
+    entity = {
+        "product_name": product_name,
+        "vendor_name": vendor_name,
+        "website": website,
+        "sha1_hash": sha1_hash,
+        "input_fields": [],
+        "resolved_fields": [],
+        "sources": {},
+        "confidence": {},
+        "conflicts": [],
+    }
+    
+    # Track user-provided fields
+    if sha1_hash:
+        entity["input_fields"].append("sha1_hash")
+    if product_name:
+        entity["input_fields"].append("product_name")
+    if vendor_name:
+        entity["input_fields"].append("vendor_name")
+    if website:
+        entity["input_fields"].append("website")
+    
+    # PHASE 1: PRIMARY RESOLUTION - Use most specific input first
+    # Priority: SHA1 > URL > Name
+    
+    if sha1_hash and not (product_name and vendor_name):
+        # SHA1 provides product + vendor from VirusTotal
+        vt_result = _resolve_from_sha1(sha1_hash)
+        
+        if not product_name and vt_result.get("product_name") != "Unknown":
+            entity["product_name"] = vt_result["product_name"]
+            entity["sources"]["product_name"] = "virustotal"
+            entity["confidence"]["product_name"] = 0.8
+            entity["resolved_fields"].append("product_name")
+        
+        if not vendor_name and vt_result.get("vendor_name") != "Unknown":
+            entity["vendor_name"] = vt_result["vendor_name"]
+            entity["sources"]["vendor_name"] = "virustotal"
+            entity["confidence"]["vendor_name"] = 0.7
+            entity["resolved_fields"].append("vendor_name")
+        
+        # Store file reputation data if available
+        if vt_result.get("file_reputation"):
+            entity["file_reputation"] = vt_result["file_reputation"]
+            entity["file_type"] = vt_result.get("file_type")
+    
+    if website and not (product_name and vendor_name):
+        # URL provides product + vendor via LLM analysis
+        url_result = _resolve_from_url(website)
+        
+        if not product_name and url_result.get("product_name"):
+            entity["product_name"] = url_result["product_name"]
+            entity["sources"]["product_name"] = "url_analysis"
+            entity["confidence"]["product_name"] = 0.9
+            entity["resolved_fields"].append("product_name")
+        
+        if not vendor_name and url_result.get("vendor_name"):
+            entity["vendor_name"] = url_result["vendor_name"]
+            entity["sources"]["vendor_name"] = "url_analysis"
+            entity["confidence"]["vendor_name"] = 0.9
+            entity["resolved_fields"].append("vendor_name")
+    
+    # PHASE 2: FILL REMAINING GAPS - Use web search for missing fields
+    
+    # Missing website but have product
+    if not entity["website"] and entity["product_name"]:
+        search_result = _resolve_from_name(entity["product_name"])
+        if search_result.get("website"):
+            entity["website"] = search_result["website"]
+            entity["sources"]["website"] = "web_search"
+            entity["confidence"]["website"] = 0.8
+            entity["resolved_fields"].append("website")
+    
+    # Missing vendor but have product
+    if not entity["vendor_name"] and entity["product_name"]:
+        search_result = _resolve_from_name(entity["product_name"])
+        if search_result.get("vendor_name") and search_result["vendor_name"] != entity["product_name"]:
+            entity["vendor_name"] = search_result["vendor_name"]
+            entity["sources"]["vendor_name"] = "web_search"
+            entity["confidence"]["vendor_name"] = 0.7
+            entity["resolved_fields"].append("vendor_name")
+    
+    # Missing product but have vendor or website
+    if not entity["product_name"] and (entity["vendor_name"] or entity["website"]):
+        search_query = entity["vendor_name"] or entity["website"]
+        search_result = _resolve_from_name(search_query)
+        if search_result.get("product_name"):
+            entity["product_name"] = search_result["product_name"]
+            entity["sources"]["product_name"] = "web_search"
+            entity["confidence"]["product_name"] = 0.6
+            entity["resolved_fields"].append("product_name")
+    
+    # PHASE 3: VALIDATION - Cross-check for consistency
+    
+    # Validate SHA1 product matches provided product
+    if sha1_hash and product_name and "product_name" in entity["input_fields"]:
+        vt_result = _resolve_from_sha1(sha1_hash)
+        vt_product = vt_result.get("product_name")
+        if vt_product and not _names_match(vt_product, product_name):
+            entity["conflicts"].append({
+                "field": "product_name",
+                "user_input": product_name,
+                "virustotal": vt_product,
+                "resolution": "using_user_input"
+            })
+    
+    # Validate URL product matches provided product
+    if website and product_name and "product_name" in entity["input_fields"]:
+        url_result = _resolve_from_url(website)
+        url_product = url_result.get("product_name")
+        if url_product and not _names_match(url_product, product_name):
+            entity["conflicts"].append({
+                "field": "product_name",
+                "user_input": product_name,
+                "url_analysis": url_product,
+                "resolution": "using_user_input"
+            })
+    
+    # Similar validation for vendor if needed
+    if website and vendor_name and "vendor_name" in entity["input_fields"]:
+        url_result = _resolve_from_url(website)
+        url_vendor = url_result.get("vendor_name")
+        if url_vendor and not _names_match(url_vendor, vendor_name):
+            entity["conflicts"].append({
+                "field": "vendor_name",
+                "user_input": vendor_name,
+                "url_analysis": url_vendor,
+                "resolution": "using_user_input"
+            })
+    
+    # PHASE 4: CALCULATE OVERALL CONFIDENCE
+    
+    field_confidences = [
+        entity["confidence"].get("product_name", 1.0),  # 1.0 if user-provided
+        entity["confidence"].get("vendor_name", 1.0),
+        entity["confidence"].get("website", 1.0),
+    ]
+    
+    if entity["resolved_fields"]:
+        overall_confidence = sum(field_confidences) / len(field_confidences)
+    else:
+        overall_confidence = 1.0  # All fields user-provided
+    
+    # Penalize if conflicts detected
+    if entity["conflicts"]:
+        overall_confidence *= 0.8
+    
+    confidence_level = _map_confidence_to_level(overall_confidence)
+    
+    # PHASE 5: BUILD FINAL RESPONSE
+    
+    return {
+        # Core fields (always present)
+        "product_name": entity["product_name"] or "Unknown",
+        "vendor_name": entity["vendor_name"] or "Unknown",
+        "website": entity["website"],
+        "sha1_hash": entity["sha1_hash"],
+        
+        # Metadata
+        "verified": overall_confidence > 0.7,
+        "confidence": confidence_level,
+        "input_type": _detect_primary_input_type(entity["input_fields"]),
+        
+        # Additional data
+        "file_reputation": entity.get("file_reputation"),
+        "file_type": entity.get("file_type"),
+        
+        # Detailed tracking (for debugging/validation)
+        "resolution_details": {
+            "user_provided": entity["input_fields"],
+            "resolved": entity["resolved_fields"],
+            "sources": entity["sources"],
+            "field_confidence": entity["confidence"],
+            "overall_confidence": overall_confidence,
+            "conflicts": entity["conflicts"],
+        }
+    }

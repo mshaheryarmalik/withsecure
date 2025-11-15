@@ -7,6 +7,7 @@ Tools are organized into logical category modules for better maintainability and
 # Import tools from organized category modules
 from .entity_resolution import (
     resolve_entity,
+    resolve_entity_complete,
     detect_input_type,
 )
 
@@ -67,6 +68,7 @@ def get_security_tools():
     return [
         # Entity Resolution
         resolve_entity,
+        resolve_entity_complete,
         
         # Vulnerabilities
         lookup_cves,
@@ -115,6 +117,7 @@ def get_security_tools():
 __all__ = [
     # Entity Resolution
     'resolve_entity',
+    'resolve_entity_complete',
     'detect_input_type',
     
     # Vulnerabilities

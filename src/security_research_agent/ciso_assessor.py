@@ -36,6 +36,7 @@ from .security_state import (
 )
 from .tools import (
     resolve_entity,
+    resolve_entity_complete,
     lookup_cves,
     fetch_vendor_security_info,
     lookup_security_incidents,
@@ -73,7 +74,13 @@ class AssessmentState(BaseModel):
 
 
 def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
-    """Resolve entity from input."""
+    """Resolve entity from input and ensure all 4 core fields are populated.
+    
+    Uses the new comprehensive resolver that handles all input combinations
+    and automatically fills missing fields.
+    
+    Core fields: product_name, vendor_name, website (URL), sha1_hash
+    """
     # Initialize debug logger
     logger = get_debug_logger(state.input_text)
     
@@ -91,42 +98,144 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
         input_lower = state.input_text.lower()
         if re.match(r'^[a-fA-F0-9]{40}$', state.input_text):
             status_update.append("  💡 Pattern detected: SHA1 hash (40 hex characters)")
-            status_update.append("  🔎 Querying VirusTotal for file reputation...")
+            status_update.append("  🔎 Step 1: Querying VirusTotal for file reputation...")
+            status_update.append("  🌐 Step 2: Resolving product → website via web search...")
         elif re.match(r'^https?://', state.input_text) or '.' in state.input_text and '/' in state.input_text:
             status_update.append("  💡 Pattern detected: URL/Domain")
-            status_update.append("  🌐 Step 1: Normalizing URL and fetching website...")
-            status_update.append("  📄 Step 2: Extracting page metadata (title, description, OG tags)...")
-            status_update.append("  🧠 Step 3: LLM analyzing page content for product info...")
+            status_update.append("  🌐 Step 1: Analyzing URL via Tavily + LLM...")
+            status_update.append("  📊 Step 2: Extracting product + vendor information...")
         else:
             status_update.append("  💡 Pattern detected: Name (person/product/company)")
-            status_update.append("  🤖 Initializing LLM-based entity resolver...")
+            status_update.append("  🤖 Initializing comprehensive entity resolver...")
             status_update.append("  🔍 Step 1: Performing web search for context...")
             status_update.append("  🧠 Step 2: LLM analyzing search results...")
-            status_update.append("  📊 Step 3: Extracting official product/vendor/website...")
+            status_update.append("  📊 Step 3: Filling all missing fields systematically...")
         
-        # Use the resolve_entity tool
+        # Use the OLD resolve_entity for backward compatibility to get initial data
         logger.log_tool_call("resolve_entity", {"input_text": state.input_text})
-        entity_result = resolve_entity.invoke(state.input_text)
-        logger.log_tool_call("resolve_entity", {"input_text": state.input_text}, entity_result)
+        initial_result = resolve_entity.invoke(state.input_text)
+        logger.log_tool_call("resolve_entity", {"input_text": state.input_text}, initial_result)
         
+        # Now use resolve_entity_complete to fill ALL fields
+        # Pass what we got from initial resolution
+        logger.log_tool_call("resolve_entity_complete", {
+            "product_name": initial_result.get('product_name'),
+            "vendor_name": initial_result.get('vendor_name'),
+            "website": initial_result.get('website'),
+            "sha1_hash": initial_result.get('sha1_hash')
+        })
+        
+        entity_result = resolve_entity_complete.invoke({
+            "product_name": initial_result.get('product_name') if initial_result.get('product_name') != 'Unknown' else None,
+            "vendor_name": initial_result.get('vendor_name') if initial_result.get('vendor_name') != 'Unknown' else None,
+            "website": initial_result.get('website'),
+            "sha1_hash": initial_result.get('sha1_hash')
+        })
+        
+        logger.log_tool_call("resolve_entity_complete", {
+            "product_name": initial_result.get('product_name'),
+            "vendor_name": initial_result.get('vendor_name'),
+            "website": initial_result.get('website'),
+            "sha1_hash": initial_result.get('sha1_hash')
+        }, entity_result)
+        
+        # Extract the 4 core fields
         product_name = entity_result.get('product_name', 'Unknown')
         vendor_name = entity_result.get('vendor_name', 'Unknown')
+        website = entity_result.get('website')
+        sha1_hash = entity_result.get('sha1_hash')
         input_type = entity_result.get('input_type', 'unknown')
         confidence = entity_result.get('confidence', 'unknown')
-        website = entity_result.get('website')
         
-        status_update.append(f"  ✓ Entity resolved successfully!")
-        status_update.append(f"     • Product: {product_name}")
-        status_update.append(f"     • Vendor: {vendor_name}")
-        status_update.append(f"     • Type: {input_type}")
+        # Get resolution details
+        resolution_details = entity_result.get('resolution_details', {})
+        resolved_fields = resolution_details.get('resolved', [])
+        
+        # VALIDATION: Check if we have sufficient data to proceed
+        if product_name == 'Unknown' and vendor_name == 'Unknown':
+            status_update.append("")
+            status_update.append("  ⚠️  INSUFFICIENT DATA")
+            status_update.append("  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            status_update.append("  ❌ Unable to identify product or vendor from provided input")
+            status_update.append("")
+            
+            if input_type == 'sha1':
+                status_update.append("  📋 Possible reasons for SHA1 hash:")
+                status_update.append("     • File not found in VirusTotal database")
+                status_update.append("     • File has no identifying metadata")
+                status_update.append("     • Hash may be incorrect or incomplete")
+                status_update.append("")
+                status_update.append("  💡 Suggestions:")
+                status_update.append("     • Verify the SHA1 hash is correct")
+                status_update.append("     • Try providing additional information:")
+                status_update.append("       --sha1 <hash> --product <name>")
+                status_update.append("       --sha1 <hash> --url <website>")
+            elif input_type == 'url':
+                status_update.append("  📋 Possible reasons for URL:")
+                status_update.append("     • Website could not be accessed")
+                status_update.append("     • Page content is insufficient for identification")
+                status_update.append("     • URL may not be a product website")
+                status_update.append("")
+                status_update.append("  💡 Suggestions:")
+                status_update.append("     • Verify the URL is correct and accessible")
+                status_update.append("     • Try providing the product name:")
+                status_update.append("       --url <url> --product <name>")
+            else:
+                status_update.append("  📋 Possible reasons:")
+                status_update.append("     • Product/vendor name is too ambiguous")
+                status_update.append("     • No web search results found")
+                status_update.append("     • Name may be misspelled")
+                status_update.append("")
+                status_update.append("  💡 Suggestions:")
+                status_update.append("     • Check spelling and try again")
+                status_update.append("     • Try providing more specific information")
+                status_update.append("     • Provide additional context:")
+                status_update.append("       --product <name> --vendor <company>")
+                status_update.append("       --product <name> --url <website>")
+            
+            status_update.append("")
+            status_update.append("  ⛔ Assessment cannot continue without valid entity identification")
+            
+            logger.log_phase(1, "Entity Resolution", entity_result, "FAILED - Insufficient Data")
+            
+            return {
+                "entity": None,
+                "errors": state.errors + ["Insufficient data: Unable to identify product or vendor"],
+                "status_messages": state.status_messages + status_update,
+                "current_step": "Entity Resolution Failed - Insufficient Data",
+                "ciso_brief": None  # Signal to stop assessment
+            }
+        
+        status_update.append(f"  ✓ Resolution completed!")
+        
+        # Show what was resolved
+        if resolved_fields:
+            status_update.append(f"  📊 Resolved {len(resolved_fields)} field(s): {', '.join(resolved_fields)}")
+        
+        status_update.append("")
+        status_update.append("  📋 FINAL ENTITY DETAILS:")
+        status_update.append(f"     • Product Name: {product_name}")
+        status_update.append(f"     • Vendor Name: {vendor_name}")
+        status_update.append(f"     • Website: {website or 'N/A'}")
+        status_update.append(f"     • SHA1 Hash: {sha1_hash or 'N/A'}")
         status_update.append(f"     • Confidence: {confidence.upper()}")
-        if website:
-            status_update.append(f"     • Website: {website}")
+        
+        # Show sources if available
+        sources = resolution_details.get('sources', {})
+        if sources:
+            status_update.append(f"     • Resolution Sources:")
+            for field, source in sources.items():
+                status_update.append(f"       - {field}: {source}")
+        
+        # Show conflicts if any
+        conflicts = resolution_details.get('conflicts', [])
+        if conflicts:
+            status_update.append(f"     ⚠ Detected {len(conflicts)} conflict(s) - using user input")
         
         # Add interpretation reasoning and product type
-        interpretation = entity_result.get('input_interpretation')
-        reasoning = entity_result.get('reasoning')
-        product_type = entity_result.get('product_type')
+        interpretation = initial_result.get('input_interpretation')
+        reasoning = initial_result.get('reasoning')
+        product_type = initial_result.get('product_type')
         
         if interpretation:
             status_update.append(f"     • Interpretation: {interpretation}")
@@ -138,7 +247,8 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
         # Add SHA1-specific info
         if input_type == 'sha1':
             reputation = entity_result.get('file_reputation', 'Unknown')
-            status_update.append(f"     • File Reputation: {reputation}")
+            if reputation:
+                status_update.append(f"     • File Reputation: {reputation}")
         
         # Log Phase 1 results
         logger.log_phase(1, "Entity Resolution", entity_result, "SUCCESS")
@@ -146,7 +256,7 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
         return {
             "entity": entity_result,
             "messages": state.messages + [
-                AIMessage(content=f"Resolved entity: {product_name}")
+                AIMessage(content=f"Resolved entity: {product_name} by {vendor_name}")
             ],
             "status_messages": state.status_messages + status_update,
             "current_step": "Entity Resolved"
@@ -284,8 +394,6 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         product_name = state.entity.get("product_name", "Unknown") if state.entity else "Unknown"
         vendor_name = state.entity.get("vendor_name", "Unknown") if state.entity else "Unknown"
         website = state.entity.get("website") if state.entity else None
-        # Use original_name for CVE searches (e.g., "redis" instead of "Redis (database)")
-        original_name = state.entity.get("original_name", product_name) if state.entity else product_name
         
         status_update = [
             "",
@@ -293,7 +401,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             "🔐 PHASE 3: COMPREHENSIVE SECURITY DATA GATHERING",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             f"  🎯 Target: {product_name}",
-            f"  🔍 CVE Search Name: {original_name}",  # Show which name is used for CVE search
+            f"  🔍 CVE Search: Using product name '{product_name}'",
             f"  📡 Querying 15+ security databases and sources...",
             ""
         ]
@@ -306,8 +414,8 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         status_update.append("  [1/6] 🛡️  VULNERABILITY DATABASES")
         cve_data = None
         try:
-            # Use original_name for CVE searches (more likely to match NVD entries)
-            cve_input = {"product_name": original_name, "vendor_name": vendor_name}
+            # Always use product_name for CVE searches
+            cve_input = {"product_name": product_name, "vendor_name": vendor_name}
             logger.log_tool_call("lookup_cves", cve_input)
             cve_data = lookup_cves.invoke(cve_input)
             logger.log_tool_call("lookup_cves", cve_input, cve_data)
@@ -321,7 +429,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         
         # GitHub Advisories
         try:
-            gh_data = lookup_github_advisories.invoke({"product_name": original_name})
+            gh_data = lookup_github_advisories.invoke({"product_name": product_name})
             if gh_data.get('advisory_count', 0) > 0:
                 status_update.append(f"        ├─ GitHub Advisories: {gh_data['advisory_count']} found")
                 all_data['github_advisories'] = gh_data
@@ -331,7 +439,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         
         # US-CERT
         try:
-            cert_data = search_us_cert_advisories.invoke({"product_name": original_name})
+            cert_data = search_us_cert_advisories.invoke({"product_name": product_name})
             if cert_data.get('advisory_count', 0) > 0:
                 status_update.append(f"        └─ US-CERT: {cert_data['advisory_count']} advisories")
                 all_data['us_cert'] = cert_data
@@ -443,6 +551,36 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         # [4] Threat Intelligence
         status_update.append("")
         status_update.append("  [4/6] 🔍 THREAT INTELLIGENCE")
+        
+        # MalwareBazaar - check if SHA1 hash is available
+        sha1_hash = state.entity.get("sha1_hash") if state.entity else None
+        if sha1_hash:
+            try:
+                malware_data = lookup_malwarebazaar.invoke({"sha1_hash": sha1_hash})
+                if malware_data.get('malware_detected'):
+                    samples = malware_data.get('samples_found', 0)
+                    status_update.append(f"        ├─ MalwareBazaar: {samples} malware samples found ⚠️")
+                    all_data['malwarebazaar'] = malware_data
+                    citation_count += 1
+                else:
+                    status_update.append("        ├─ MalwareBazaar: No malware detected ✓")
+            except:
+                status_update.append("        ├─ MalwareBazaar: Check failed")
+        else:
+            # Fallback: search by product name if no SHA1
+            try:
+                malware_data = lookup_malwarebazaar.invoke({"product_name": product_name})
+                if malware_data.get('malware_detected'):
+                    samples = malware_data.get('samples_found', 0)
+                    status_update.append(f"        ├─ MalwareBazaar: {samples} tagged samples found")
+                    all_data['malwarebazaar'] = malware_data
+                    citation_count += 1
+                else:
+                    status_update.append("        ├─ MalwareBazaar: No tagged samples")
+            except:
+                status_update.append("        ├─ MalwareBazaar: Check failed")
+        
+        # Domain-based threat intel
         if website:
             domain = urlparse(website).netloc or urlparse(website).path
             
@@ -470,7 +608,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             except:
                 status_update.append("        └─ AlienVault OTX: Check failed")
         else:
-            status_update.append("        └─ No domain - skipping threat intel")
+            status_update.append("        └─ No domain - skipping domain-based threat intel")
         
         # [5] Company Information
         status_update.append("")
@@ -808,6 +946,7 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             'us_cert': ("https://www.cisa.gov/uscert/", "US-CERT", SourceLabel.INDEPENDENT, "CERT advisories"),
             'hibp': ("https://haveibeenpwned.com", "HaveIBeenPwned", SourceLabel.INDEPENDENT, "Breach data"),
             'news': ("Tavily Search", "Security News", SourceLabel.INDEPENDENT, "Security incident reports"),
+            'malwarebazaar': ("https://bazaar.abuse.ch", "MalwareBazaar", SourceLabel.INDEPENDENT, "Malware sample database"),
             'urlhaus': ("https://urlhaus.abuse.ch", "URLhaus", SourceLabel.INDEPENDENT, "Malicious URL detection"),
             'otx': ("https://otx.alienvault.com", "AlienVault OTX", SourceLabel.INDEPENDENT, "Threat intelligence"),
             'whois': ("WHOIS Lookup", "Domain WHOIS", SourceLabel.INDEPENDENT, "Domain registration data"),
@@ -1039,6 +1178,27 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         }
 
 
+def should_continue_after_entity_resolution(state: AssessmentState) -> str:
+    """Determine if assessment should continue after entity resolution.
+    
+    Returns "continue" if entity was resolved successfully, "end" otherwise.
+    """
+    if state.entity is None:
+        # Entity resolution failed - stop assessment
+        return "end"
+    
+    # Check if we have sufficient data (not both Unknown)
+    product_name = state.entity.get('product_name', 'Unknown')
+    vendor_name = state.entity.get('vendor_name', 'Unknown')
+    
+    if product_name == 'Unknown' and vendor_name == 'Unknown':
+        # Insufficient data - stop assessment
+        return "end"
+    
+    # Sufficient data - continue assessment
+    return "continue"
+
+
 def create_ciso_assessor_graph() -> StateGraph:
     """Create the CISO security assessor graph."""
     
@@ -1053,7 +1213,17 @@ def create_ciso_assessor_graph() -> StateGraph:
     
     # Define edges
     workflow.set_entry_point("resolve_entity")
-    workflow.add_edge("resolve_entity", "classify_software")
+    
+    # Conditional edge: only continue if entity resolution succeeded
+    workflow.add_conditional_edges(
+        "resolve_entity",
+        should_continue_after_entity_resolution,
+        {
+            "continue": "classify_software",
+            "end": END
+        }
+    )
+    
     workflow.add_edge("classify_software", "gather_security_data")
     workflow.add_edge("gather_security_data", "generate_ciso_brief")
     workflow.add_edge("generate_ciso_brief", END)

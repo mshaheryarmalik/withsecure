@@ -159,14 +159,30 @@ def create_status_display(status_messages):
 
 def assess_command(args):
     """Run security assessment."""
-    # Determine input
-    input_text = args.product or args.url or args.sha1
+    # Determine primary input (priority: SHA1 > URL > Product > Vendor)
+    # Note: Currently AssessmentState accepts single input_text
+    # The comprehensive resolver will handle filling missing fields
+    input_text = args.sha1 or args.url or args.product or args.vendor
     
     if not input_text:
-        console.print("[red]Error: Must provide --product, --url, or --sha1[/red]")
+        console.print("[red]Error: Must provide at least one input (--product, --vendor, --url, or --sha1)[/red]")
         sys.exit(1)
     
-    console.print(f"\n[cyan]Assessing:[/cyan] {input_text}\n")
+    # Show all provided inputs
+    provided_inputs = []
+    if args.sha1:
+        provided_inputs.append(f"SHA1: {args.sha1[:16]}...")
+    if args.product:
+        provided_inputs.append(f"Product: {args.product}")
+    if args.vendor:
+        provided_inputs.append(f"Vendor: {args.vendor}")
+    if args.url:
+        provided_inputs.append(f"URL: {args.url}")
+    
+    console.print(f"\n[cyan]Assessing:[/cyan] {', '.join(provided_inputs)}\n")
+    
+    # TODO: Future enhancement - pass multiple inputs directly to resolve_entity_complete
+    # For now, the single input_text triggers resolve_entity which then calls resolve_entity_complete
     
     # Check cache
     cache = get_cache(ttl_hours=args.cache_ttl) if not args.no_cache else None
@@ -285,10 +301,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --product "Slack"
-  %(prog)s --url "https://slack.com"
-  %(prog)s --sha1 "a1b2c3d4e5f6..."
-  %(prog)s --product "Dropbox" --output markdown --output-file report.md
+  # Single input
+  %(prog)s assess --product "Slack"
+  %(prog)s assess --url "https://slack.com"
+  %(prog)s assess --sha1 "a1b2c3d4e5f6..."
+  
+  # Multiple inputs (more accurate resolution!)
+  %(prog)s assess --product "Zoom" --url "https://zoom.us"
+  %(prog)s assess --product "Slack" --vendor "Salesforce"
+  %(prog)s assess --sha1 "abc123..." --url "https://zoom.com"
+  
+  # With output options
+  %(prog)s assess --product "Dropbox" --output markdown --output-file report.md
+  
+  # Cache management
   %(prog)s cache stats
   %(prog)s cache clear
         """
@@ -298,10 +324,15 @@ Examples:
     
     # Assess command (default)
     assess_parser = subparsers.add_parser('assess', help='Run security assessment (default)')
-    input_group = assess_parser.add_mutually_exclusive_group()
-    input_group.add_argument('-p', '--product', help='Product name')
-    input_group.add_argument('-u', '--url', help='Product URL')
-    input_group.add_argument('-s', '--sha1', help='SHA1 hash')
+    
+    # Input arguments (can now be combined!)
+    assess_parser.add_argument('-p', '--product', help='Product name')
+    assess_parser.add_argument('-v', '--vendor', help='Vendor/company name')  
+    assess_parser.add_argument('-u', '--url', help='Product URL')
+    assess_parser.add_argument('-s', '--sha1', help='SHA1 hash')
+    
+    # Note: Multiple inputs can be provided for more accurate resolution
+    # Example: --product "Zoom" --url "https://zoom.us"
     
     assess_parser.add_argument(
         '-o', '--output',
@@ -325,9 +356,9 @@ Examples:
         help='Cache TTL in hours (default: 24)'
     )
     assess_parser.add_argument(
-        '-v', '--verbose',
+        '--verbose',
         action='store_true',
-        help='Verbose output'
+        help='Verbose output (removed -v shorthand to avoid conflict with --vendor)'
     )
     
     # Cache command

@@ -217,3 +217,4 @@ known_exploited_vulnerabilities.json
 
 frontend/figma/package.json
 frontend/figma/package-lock.json
+ENTITY_RESOLUTION_GUIDE.md
