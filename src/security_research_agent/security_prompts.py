@@ -177,38 +177,44 @@ Provide:
 
 Remember: This is independent source data from NVD."""
 
-RISK_SCORING_PROMPT = """Calculate Trust Score and Risk Score for "{product_name}" based on:
+RISK_SCORING_PROMPT = """Calculate Trust Score and Risk Score ONLY based on the data provided below. DO NOT make up or assume any additional information.
 
-CVE Summary:
+VERIFIED ENTITY INFORMATION (USE THIS EXACTLY):
+- Product: {product_name}
+- Vendor: {vendor_name}
+- Website: {website}
+
+CVE Summary (from NVD - independent source):
 - Total: {total_cves}, Critical: {critical}, High: {high}
 - CISA KEV: {kev_count}
 - Trend: {trend}
 
-Incidents:
+Incidents (from HIBP/News - independent sources):
 - Breaches: {breaches}
 - Total incidents: {incidents}
 
-Compliance:
+Compliance (vendor-stated unless verified):
 - SOC2: {soc2}
 - ISO: {iso_count}
 - GDPR: {gdpr}
 
-Data Handling:
+Data Handling (vendor-stated):
 - Encryption: {encryption}
 - ToS found: {tos_found}
 
-Provide:
-1. Trust Score (0-100)
-2. Risk Score (0-100)
-3. 2-3 sentence rationale
-4. Confidence level (high/medium/low/insufficient)
+IMPORTANT RULES:
+1. Return ONLY a JSON object with: {{"trust_score": 50, "risk_score": 50, "rationale": "2-3 sentence explanation"}}
+2. DO NOT re-describe the entity - we already have that data
+3. DO NOT make up vendor names or websites - use ONLY what's provided above
+4. Base scores ONLY on the metrics provided
+5. If data is missing, mention it but don't assume values
 
-Consider:
-- High CVE count or CISA KEV presence = Lower trust, Higher risk
-- Data breaches = Lower trust, Higher risk
-- Good compliance = Higher trust, Lower risk
-- Transparent security practices = Higher trust
-- Missing data = Lower confidence"""
+Trust/Risk Score Guidelines:
+- High CVE count or CISA KEV = Lower trust (40-50), Higher risk (60-70)
+- Data breaches = Lower trust (30-40), Higher risk (70-80)
+- Good compliance = Higher trust (60-70), Lower risk (30-40)
+- Few/no issues = Higher trust (70-80), Lower risk (20-30)
+- Missing data = Moderate trust (50), Moderate risk (50)"""
 
 ALTERNATIVES_PROMPT = """Suggest 1-2 safer alternatives to "{product_name}" (category: {category}).
 
