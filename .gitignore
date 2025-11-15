@@ -211,3 +211,7 @@ README_legacy.md
 plan.md
 SECURITY_SOURCES.md
 known_exploited_vulnerabilities.json
+
+
+frontend/figma/package.json
+frontend/figma/package-lock.json
