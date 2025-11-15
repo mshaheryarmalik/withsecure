@@ -212,5 +212,11 @@ plan.md
 SECURITY_SOURCES.md
 known_exploited_vulnerabilities.json
 
+<<<<<<< HEAD
 # Debug logs
 .logs/
+=======
+
+frontend/figma/package.json
+frontend/figma/package-lock.json
+>>>>>>> 39c1ee87ce6b1f9b21233fa7d60681ed1d3308f0
