@@ -39,7 +39,7 @@ Optional (but recommended):
 
 ### 3. Run Security Assessment
 
-**CLI Usage:**
+#### Option A: CLI Usage
 
 ```bash
 # Assess by product name
@@ -51,6 +51,9 @@ python ciso_cli.py assess --url "https://slack.com"
 # Assess by SHA1 hash
 python ciso_cli.py assess --sha1 "a1b2c3d4e5f6..."
 
+# With version filtering
+python ciso_cli.py assess --product "Zoom" --version "5.14.5"
+
 # Save as markdown report
 python ciso_cli.py assess --product "Dropbox" --output markdown --output-file report.md
 
@@ -60,6 +63,36 @@ python ciso_cli.py assess --product "Salesforce" --output json --output-file ass
 # Disable cache (force fresh assessment)
 python ciso_cli.py assess --product "GitHub" --no-cache
 ```
+
+#### Option B: REST API with Streaming
+
+```bash
+# Start the API server
+python apps.py
+
+# Or with uvicorn for production
+uvicorn apps:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+**Test the API:**
+```bash
+# Streaming mode (recommended) - shows real-time progress
+python test_api_client.py --product "Slack"
+
+# With version
+python test_api_client.py --product "Zoom" --version "5.14.5"
+
+# Non-streaming mode - waits for final result
+python test_api_client.py --product "Dropbox" --no-stream
+```
+
+**API Endpoints:**
+- `POST /assess/stream` - Streaming assessment with real-time progress (SSE)
+- `POST /assess` - Non-streaming assessment (returns final result)
+- `GET /health` - Health check
+- Interactive docs: `http://localhost:8000/docs`
+
+See [API_USAGE.md](API_USAGE.md) for detailed API documentation and frontend integration examples.
 
 **Real-Time Status Updates:**
 

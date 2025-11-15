@@ -13,6 +13,7 @@ Your mission: Turn minimal input (product name, URL, or SHA1 hash) into a compre
 3. **NO HALLUCINATIONS**: If data is not available, explicitly state "Insufficient public evidence" instead of guessing
 4. **TRANSPARENCY**: Show your confidence level and explain gaps in data
 5. **ACTIONABLE**: Provide clear trust/risk scores with detailed rationale
+6. **NO EMOJIS**: Never use emojis in your output. Use plain text only for professional reports.
 
 ## High-Signal Sources (Priority Order)
 
@@ -95,19 +96,19 @@ Suggest 1-2 alternatives with:
 Format: [Source Type](URL) (label)
 
 Examples:
-- ✅ "Product has 47 CVEs including 3 critical" [NVD](https://nvd.nist.gov/vuln/search/results?query=slack) (independent)
-- ✅ "Vendor claims SOC2 Type II certification" [Vendor Security Page](https://example.com/security) (vendor-stated)
-- ❌ "Product is very secure" (no citation)
-- ❌ "Vendor has good reputation" (no citation)
+- [GOOD] "Product has 47 CVEs including 3 critical" [NVD](https://nvd.nist.gov/vuln/search/results?query=slack) (independent)
+- [GOOD] "Vendor claims SOC2 Type II certification" [Vendor Security Page](https://example.com/security) (vendor-stated)
+- [BAD] "Product is very secure" (no citation)
+- [BAD] "Vendor has good reputation" (no citation)
 
 ## Handling Insufficient Data
 
 If you cannot find data for a section:
-- ✅ "Insufficient public evidence for CVE data"
-- ✅ "No security page found; vendor transparency: low"
-- ✅ "Terms of Service not located; data handling practices: unknown"
-- ❌ "Product appears to be secure" (hallucination)
-- ❌ "Vendor probably follows best practices" (hallucination)
+- [GOOD] "Insufficient public evidence for CVE data"
+- [GOOD] "No security page found; vendor transparency: low"
+- [GOOD] "Terms of Service not located; data handling practices: unknown"
+- [BAD] "Product appears to be secure" (hallucination)
+- [BAD] "Vendor probably follows best practices" (hallucination)
 
 ## Output Format
 
@@ -152,6 +153,7 @@ INSTRUCTIONS:
 3. If relevant, select 1-2 secondary categories (optional)
 4. Assign a confidence level (high/medium/low)
 5. Provide a brief reasoning for your classification
+6. Do not use emojis in your response - use plain text only
 
 Available Categories (868 categories):
 {categories_list}
@@ -190,7 +192,7 @@ Remember: This is independent source data from NVD."""
 
 RISK_SCORING_PROMPT = """Calculate Trust Score and Risk Score STRICTLY ONLY based on the data provided below.
 
-⚠️ CRITICAL: DO NOT MAKE UP ANY FACTS. DO NOT ASSUME ANYTHING. USE ONLY THE VALUES PROVIDED BELOW.
+[CRITICAL] CRITICAL: DO NOT MAKE UP ANY FACTS. DO NOT ASSUME ANYTHING. USE ONLY THE VALUES PROVIDED BELOW.
 
 VERIFIED ENTITY INFORMATION (USE THIS EXACTLY - DO NOT INVENT):
 - Product: {product_name}
@@ -215,7 +217,7 @@ Data Handling (vendor-stated):
 - Encryption stated: {encryption}
 - ToS found: {tos_found}
 
-⚠️ CRITICAL CONSTRAINTS:
+[CRITICAL] CRITICAL CONSTRAINTS:
 1. Return ONLY a JSON object: {{"trust_score": 50, "risk_score": 50, "rationale": "explanation"}}
 2. In the rationale, reference ONLY the exact values provided above
 3. DO NOT claim encryption is "confirmed" if encryption={encryption} is False
@@ -237,6 +239,8 @@ SCORING ALGORITHM (base on ACTUAL values above):
 RATIONALE TEMPLATE:
 "[Product] has [total_cves] CVEs (critical: [critical]). [Breaches] breaches found. Compliance: [describe from soc2/iso_count/gdpr]. [Encryption status]. [Overall assessment]."
 
+Do not use emojis in your output - use plain text only.
+
 Return ONLY valid JSON with these exact numbers."""
 
 ALTERNATIVES_PROMPT = """Suggest 1-2 safer alternatives to "{product_name}" (category: {category}).
@@ -245,7 +249,8 @@ For each alternative:
 1. Product name and vendor
 2. Brief rationale (e.g., "Better security posture with SOC2 and ISO 27001, fewer CVEs", "More transparent security practices, no recent breaches")
 
-Focus on concrete security advantages, not marketing claims."""
+Focus on concrete security advantages, not marketing claims.
+Do not use emojis in your output - use plain text only."""
 
 FINAL_BRIEF_PROMPT = """Generate the final CISO security brief for "{product_name}".
 
@@ -263,6 +268,7 @@ Requirements:
 4. Note any "Insufficient public evidence"
 5. Suggest safer alternatives
 6. Provide overall confidence level
+7. Do not use emojis in your output - use plain text only
 
 Output as structured CISOBrief."""
 

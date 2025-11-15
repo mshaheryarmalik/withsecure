@@ -467,8 +467,10 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         
         # [0] Version Detection (if not provided)
         resolved_version = state.product_version
+        skip_cves = False
+        
         if not resolved_version or resolved_version == "latest":
-            status_update.append("  [0/6] 🔢 VERSION DETECTION")
+            status_update.append("  [0/6]  VERSION DETECTION")
             status_update.append("        ├─ No version specified, looking up latest version...")
             try:
                 version_result = lookup_latest_version.invoke({
@@ -478,41 +480,52 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
                 
                 if version_result.get("found"):
                     resolved_version = version_result.get("version")
-                    status_update.append(f"        ├─ ✓ Found latest version: {resolved_version}")
+                    status_update.append(f"        ├─ [OK] Found latest version: {resolved_version}")
                     status_update.append(f"        └─ Source: {version_result.get('source', 'Tavily search')}")
                 else:
-                    resolved_version = "latest"
-                    status_update.append("        └─ ⚠️  Could not determine version, using 'latest'")
+                    resolved_version = None
+                    skip_cves = True
+                    status_update.append("        └─ [WARNING] Could not determine version")
+                    status_update.append("        └─ [INFO] CVE lookup will be skipped (version required)")
             except Exception as e:
-                resolved_version = "latest"
-                status_update.append(f"        └─ ⚠️  Version lookup failed: {str(e)}")
+                resolved_version = None
+                skip_cves = True
+                status_update.append(f"        └─ [WARNING] Version lookup failed: {str(e)}")
+                status_update.append("        └─ [INFO] CVE lookup will be skipped (version required)")
             
             status_update.append("")
         else:
-            status_update.append(f"  📌 Using specified version: {resolved_version}")
+            status_update.append(f"   Using specified version: {resolved_version}")
             status_update.append("")
         
         # [1] CVE Databases
-        status_update.append("  [1/6] 🛡️  VULNERABILITY DATABASES")
+        status_update.append("  [1/6]   VULNERABILITY DATABASES")
         cve_data = None
-        try:
-            # Use resolved_version (either user-provided or auto-detected)
-            cve_input = {
-                "product_name": product_name,
-                "vendor_name": vendor_name,
-                "product_version": resolved_version
-            }
-            logger.log_tool_call("lookup_cves", cve_input)
-            cve_data = lookup_cves.invoke(cve_input)
-            logger.log_tool_call("lookup_cves", cve_input, cve_data)
-            cve_count = cve_data.get('total_cves', 0)
-            version_str = f" for version {resolved_version}" if resolved_version and resolved_version != "latest" else ""
-            status_update.append(f"        ├─ NVD: {cve_count} CVEs found{version_str} ({cve_data.get('critical_count', 0)} critical)")
-            citation_count += 1
-        except Exception as e:
-            logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
-            cve_data = {"total_cves": 0, "data_available": False}
-            status_update.append("        ├─ NVD: Query failed")
+        
+        if skip_cves:
+            # Skip CVE lookup if version is not available
+            cve_data = {"total_cves": 0, "data_available": False, "skipped": True, "reason": "Version not available"}
+            status_update.append("        ├─ NVD: Skipped (version required for accurate CVE matching)")
+            status_update.append("        └─ [INFO] Please provide --version flag for CVE analysis")
+        else:
+            try:
+                # Use resolved_version (either user-provided or auto-detected)
+                cve_input = {
+                    "product_name": product_name,
+                    "vendor_name": vendor_name,
+                    "product_version": resolved_version
+                }
+                logger.log_tool_call("lookup_cves", cve_input)
+                cve_data = lookup_cves.invoke(cve_input)
+                logger.log_tool_call("lookup_cves", cve_input, cve_data)
+                cve_count = cve_data.get('total_cves', 0)
+                version_str = f" for version {resolved_version}" if resolved_version else ""
+                status_update.append(f"        ├─ NVD: {cve_count} CVEs found{version_str} ({cve_data.get('critical_count', 0)} critical)")
+                citation_count += 1
+            except Exception as e:
+                logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
+                cve_data = {"total_cves": 0, "data_available": False}
+                status_update.append("        ├─ NVD: Query failed")
         
         # GitHub Advisories
         try:
