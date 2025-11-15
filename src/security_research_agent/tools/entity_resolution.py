@@ -859,3 +859,87 @@ def resolve_entity_complete(
             "conflicts": entity["conflicts"],
         }
     }
+
+
+@tool
+def lookup_latest_version(product_name: str, vendor_name: Optional[str] = None) -> Dict[str, Any]:
+    """Look up the latest version of a product using Tavily search.
+    
+    Args:
+        product_name: Name of the product
+        vendor_name: Name of the vendor (optional, helps with accuracy)
+        
+    Returns:
+        Dictionary containing the latest version information
+    """
+    tavily_api_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_api_key:
+        return {
+            "version": "latest",
+            "found": False,
+            "note": "Tavily API key not configured"
+        }
+    
+    try:
+        tavily = create_tavily_client(tavily_api_key)
+        
+        # Build search query
+        search_terms = [product_name]
+        if vendor_name:
+            search_terms.append(vendor_name)
+        search_terms.extend(["latest version", "current version", "release"])
+        
+        query = " ".join(search_terms)
+        
+        # Search for version information
+        results = tavily.search(query=query, max_results=5)
+        
+        if results and results.get('results'):
+            # Collect text from search results
+            combined_text = ""
+            for result in results['results'][:3]:  # Use top 3 results
+                title = result.get('title', '')
+                content = result.get('content', '')
+                combined_text += f"{title}\n{content}\n\n"
+            
+            # Use regex to find version patterns (e.g., "5.14.5", "v2.0.1", "version 3.2")
+            import re
+            
+            # Common version patterns
+            patterns = [
+                r'(?:version|v\.?|release)\s*(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)',  # "version 5.14.5", "v5.14.5"
+                r'(\d+\.\d+\.\d+(?:\.\d+)?)\s*(?:is|was|now)?\s*(?:the\s+)?(?:latest|current|newest)',  # "5.14.5 is the latest"
+                r'(?:latest|current|newest)\s+(?:version\s+)?(?:is\s+)?(?:v\.?)?(\d+\.\d+(?:\.\d+)?(?:\.\d+)?)',  # "latest version is 5.14.5"
+                r'\b(\d+\.\d+\.\d+(?:\.\d+)?)\b',  # Generic version pattern (fallback)
+            ]
+            
+            found_versions = []
+            for pattern in patterns:
+                matches = re.findall(pattern, combined_text, re.IGNORECASE)
+                found_versions.extend(matches)
+            
+            if found_versions:
+                # Take the most common version or the first one
+                from collections import Counter
+                version_counts = Counter(found_versions)
+                most_common_version = version_counts.most_common(1)[0][0]
+                
+                return {
+                    "version": most_common_version,
+                    "found": True,
+                    "source": "Tavily search",
+                    "confidence": "medium" if len(found_versions) > 1 else "low"
+                }
+        
+        return {
+            "version": "latest",
+            "found": False,
+            "note": "Could not determine latest version from search results"
+        }
+    
+    except Exception as e:
+        return {
+            "version": "latest",
+            "found": False,
+            "error": str(e)
+        }

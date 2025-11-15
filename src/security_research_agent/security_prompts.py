@@ -38,7 +38,8 @@ Your mission: Turn minimal input (product name, URL, or SHA1 hash) into a compre
 - For SHA1 hashes: Identify the file and its reputation
 
 ### 2. Software Taxonomy
-- Classify into clear category (File sharing, GenAI tool, SaaS CRM, etc.)
+- Classify into the most specific category from 868+ Gartner software categories
+- Use comprehensive taxonomy (e.g., "AI Code Assistants", "Cloud HCM Suites", "Security Information and Event Management")
 - Provide confidence level
 
 ### 3. Security Posture Analysis
@@ -143,22 +144,32 @@ ENTITY_RESOLUTION_PROMPT = """Given the input: "{input_text}"
 
 If you cannot confidently resolve the entity, return low confidence and explain why."""
 
-SOFTWARE_TAXONOMY_PROMPT = """Classify the software "{product_name}" into appropriate category.
+SOFTWARE_TAXONOMY_PROMPT = """Classify the software "{product_name}" into the most appropriate category from the comprehensive Gartner software taxonomy.
 
-Categories:
-- File sharing (Dropbox, Box, Google Drive)
-- GenAI tool (ChatGPT, Claude, Copilot)
-- SaaS CRM (Salesforce, HubSpot)
-- Endpoint agent (CrowdStrike, Carbon Black)
-- Browser extension
-- Communication platform (Slack, Teams)
-- Development tool (GitHub, GitLab)
-- Security tool
-- Cloud storage
-- Project management (Jira, Asana)
-- Other
+INSTRUCTIONS:
+1. Analyze the product name, vendor, and website information provided
+2. Select the MOST SPECIFIC category that best describes this software
+3. If relevant, select 1-2 secondary categories (optional)
+4. Assign a confidence level (high/medium/low)
+5. Provide a brief reasoning for your classification
 
-Provide primary category and optional secondary categories with confidence level."""
+Available Categories (868 categories):
+{categories_list}
+
+IMPORTANT GUIDELINES:
+- Choose the MOST SPECIFIC category available (e.g., "AI Code Assistants" over "Development tool")
+- Use "Other" only if no suitable category exists
+- Consider the PRIMARY function of the software
+- Be precise - review all categories before selecting
+- Higher confidence for well-known products in clearly defined categories
+
+Return ONLY a JSON object (no markdown, no explanations):
+{{
+    "primary_category": "exact category name from list",
+    "secondary_categories": ["optional secondary category 1", "optional secondary category 2"],
+    "confidence": "high|medium|low",
+    "reasoning": "brief explanation of classification choice"
+}}"""
 
 CVE_ANALYSIS_PROMPT = """Analyze CVE data for "{product_name}":
 

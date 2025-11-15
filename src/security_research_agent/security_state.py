@@ -33,20 +33,31 @@ class SourceLabel(str, Enum):
     MIXED = "mixed"
 
 
-class SoftwareCategory(str, Enum):
-    """Software taxonomy categories."""
-    
-    FILE_SHARING = "File sharing"
-    GENAI_TOOL = "GenAI tool"
-    SAAS_CRM = "SaaS CRM"
-    ENDPOINT_AGENT = "Endpoint agent"
-    BROWSER_EXTENSION = "Browser extension"
-    COMMUNICATION_PLATFORM = "Communication platform"
-    DEVELOPMENT_TOOL = "Development tool"
-    SECURITY_TOOL = "Security tool"
-    CLOUD_STORAGE = "Cloud storage"
-    PROJECT_MANAGEMENT = "Project management"
-    OTHER = "Other"
+# Load software categories from JSON file
+import json
+import os
+
+_CATEGORIES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "software_categories.json")
+
+def _load_software_categories():
+    """Load software categories from JSON file."""
+    try:
+        with open(_CATEGORIES_FILE, 'r') as f:
+            categories = json.load(f)
+            return categories
+    except Exception:
+        # Fallback to basic categories if file not found
+        return [
+            "File sharing", "GenAI tool", "SaaS CRM", "Endpoint agent",
+            "Browser extension", "Communication platform", "Development tool",
+            "Security tool", "Cloud storage", "Project management", "Other"
+        ]
+
+# Global list of software categories (868 categories from Gartner)
+SOFTWARE_CATEGORIES = _load_software_categories()
+
+# Type alias for software category (string type)
+SoftwareCategory = str
 
 
 class EntityResolution(BaseModel):
@@ -66,8 +77,8 @@ class EntityResolution(BaseModel):
 class SoftwareTaxonomy(BaseModel):
     """Software classification and taxonomy."""
     
-    primary_category: SoftwareCategory = Field(description="Primary software category")
-    secondary_categories: List[SoftwareCategory] = Field(default_factory=list, description="Additional categories")
+    primary_category: str = Field(description="Primary software category")
+    secondary_categories: List[str] = Field(default_factory=list, description="Additional categories")
     confidence: ConfidenceLevel = Field(default=ConfidenceLevel.MEDIUM, description="Classification confidence")
 
 
@@ -171,7 +182,7 @@ class AlternativeProduct(BaseModel):
     product_name: str = Field(description="Alternative product name")
     vendor_name: str = Field(description="Alternative vendor name")
     rationale: str = Field(description="Why this is a safer alternative")
-    category: Optional[SoftwareCategory] = Field(default=None, description="Product category")
+    category: Optional[str] = Field(default=None, description="Product category")
 
 
 class Citation(BaseModel):
@@ -229,7 +240,7 @@ class CISOBrief(BaseModel):
             md += f"⚠️ **Data Limitations:** {self.insufficient_data_notes}\n\n"
         
         md += f"## Product Overview\n\n"
-        md += f"**Category:** {self.taxonomy.primary_category.value}\n"
+        md += f"**Category:** {self.taxonomy.primary_category}\n"
         md += f"**Description:** {self.description}\n"
         md += f"**Usage:** {self.usage}\n\n"
         

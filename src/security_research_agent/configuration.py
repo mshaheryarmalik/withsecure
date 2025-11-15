@@ -208,6 +208,16 @@ class Configuration(BaseModel):
             }
         }
     )
+    classification_model: str = Field(
+        default="gemini-2.0-flash-exp",
+        metadata={
+            "x_oap_ui_config": {
+                "type": "text",
+                "default": "gemini-2.0-flash-exp",
+                "description": "Model for software taxonomy classification (Gemini only)"
+            }
+        }
+    )
     # MCP server configuration
     mcp_config: Optional[MCPConfig] = Field(
         default=None,

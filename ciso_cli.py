@@ -50,8 +50,19 @@ def format_markdown_output(brief) -> str:
     return brief.to_markdown()
 
 
+def _get_value(obj):
+    """Helper to get value from Enum or string (backwards compatibility)."""
+    return obj.value if hasattr(obj, 'value') else obj
+
 def format_text_output(brief) -> str:
     """Format CISO brief as plain text."""
+    # Extract values with backwards compatibility
+    confidence = _get_value(brief.confidence)
+    primary_category = _get_value(brief.taxonomy.primary_category)
+    cve_source_label = _get_value(brief.cve_summary.source_label)
+    incidents_source_label = _get_value(brief.incidents.source_label)
+    data_handling_source_label = _get_value(brief.data_handling.source_label)
+    
     text = f"""
 {'='*80}
 SECURITY ASSESSMENT: {brief.entity.product_name}
@@ -59,7 +70,7 @@ SECURITY ASSESSMENT: {brief.entity.product_name}
 
 VENDOR: {brief.entity.vendor_name}
 ASSESSED: {brief.assessment_timestamp.strftime('%Y-%m-%d %H:%M:%S')}
-CONFIDENCE: {brief.confidence.value.upper()}
+CONFIDENCE: {confidence.upper()}
 
 {'='*80}
 EXECUTIVE SUMMARY
@@ -74,7 +85,7 @@ Rationale: {brief.rationale}
 PRODUCT OVERVIEW
 {'='*80}
 
-Category: {brief.taxonomy.primary_category.value}
+Category: {primary_category}
 Description: {brief.description}
 Usage: {brief.usage}
 
@@ -82,7 +93,7 @@ Usage: {brief.usage}
 SECURITY POSTURE
 {'='*80}
 
-CVE Summary ({brief.cve_summary.source_label.value}):
+CVE Summary ({cve_source_label}):
   - Total CVEs: {brief.cve_summary.total_cves}
   - Critical: {brief.cve_summary.critical_count}
   - High: {brief.cve_summary.high_count}
@@ -91,7 +102,7 @@ CVE Summary ({brief.cve_summary.source_label.value}):
   - CISA KEV: {brief.cve_summary.cisa_kev_count}
   - Trend: {brief.cve_summary.trend}
 
-Incidents ({brief.incidents.source_label.value}):
+Incidents ({incidents_source_label}):
   - Data Breaches: {brief.incidents.breach_count}
   - Total Incidents: {len(brief.incidents.incidents)}
 
@@ -100,7 +111,7 @@ Compliance:
   - GDPR: {'Yes' if brief.compliance.gdpr_compliant else 'Unknown'}
   - ISO Certifications: {len(brief.compliance.iso_certifications)}
 
-Data Handling ({brief.data_handling.source_label.value}):
+Data Handling ({data_handling_source_label}):
   - Encryption: {'Yes' if brief.data_handling.encryption_claimed else 'Not stated'}
   - Data Retention: {brief.data_handling.data_retention or 'Not specified'}
   - Third-party Sharing: {brief.data_handling.third_party_sharing or 'Not specified'}
@@ -121,7 +132,8 @@ CITATIONS
 
 """
     for i, citation in enumerate(brief.all_citations, 1):
-        text += f"{i}. [{citation.source_type}] {citation.source_url} ({citation.source_label.value})\n"
+        citation_source_label = _get_value(citation.source_label)
+        text += f"{i}. [{citation.source_type}] {citation.source_url} ({citation_source_label})\n"
     
     if brief.insufficient_data_notes:
         text += f"""
@@ -178,6 +190,8 @@ def assess_command(args):
         provided_inputs.append(f"Vendor: {args.vendor}")
     if args.url:
         provided_inputs.append(f"URL: {args.url}")
+    if hasattr(args, 'version') and args.version:
+        provided_inputs.append(f"Version: {args.version}")
     
     console.print(f"\n[cyan]Assessing:[/cyan] {', '.join(provided_inputs)}\n")
     
@@ -201,8 +215,12 @@ def assess_command(args):
         
         graph = create_ciso_assessor_graph()
         
+        # Get version if provided
+        product_version = getattr(args, 'version', None)
+        
         initial_state = AssessmentState(
             input_text=input_text,
+            product_version=product_version,
             messages=[HumanMessage(content=f"Assess security for: {input_text}")]
         )
         
@@ -306,9 +324,13 @@ Examples:
   %(prog)s assess --url "https://slack.com"
   %(prog)s assess --sha1 "a1b2c3d4e5f6..."
   
+  # With version filtering (CVEs and security data)
+  %(prog)s assess --product "Zoom" --version "5.14.5"
+  %(prog)s assess --product "Log4j" --version "2.14.1"
+  
   # Multiple inputs (more accurate resolution!)
   %(prog)s assess --product "Zoom" --url "https://zoom.us"
-  %(prog)s assess --product "Slack" --vendor "Salesforce"
+  %(prog)s assess --product "Slack" --vendor "Salesforce" --version "4.32.0"
   %(prog)s assess --sha1 "abc123..." --url "https://zoom.com"
   
   # With output options
@@ -330,9 +352,10 @@ Examples:
     assess_parser.add_argument('-v', '--vendor', help='Vendor/company name')  
     assess_parser.add_argument('-u', '--url', help='Product URL')
     assess_parser.add_argument('-s', '--sha1', help='SHA1 hash')
+    assess_parser.add_argument('--version', help='Product version (optional, defaults to "latest")')
     
     # Note: Multiple inputs can be provided for more accurate resolution
-    # Example: --product "Zoom" --url "https://zoom.us"
+    # Example: --product "Zoom" --url "https://zoom.us" --version "5.14.5"
     
     assess_parser.add_argument(
         '-o', '--output',
@@ -382,6 +405,7 @@ Examples:
             # Treat first arg as product name
             args.command = 'assess'
             args.product = sys.argv[1]
+            args.version = None
             args.output = 'text'
             args.output_file = None
             args.no_cache = False

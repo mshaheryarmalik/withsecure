@@ -18,6 +18,7 @@ from .security_prompts import (
     CVE_ANALYSIS_PROMPT,
     RISK_SCORING_PROMPT,
     ALTERNATIVES_PROMPT,
+    SOFTWARE_TAXONOMY_PROMPT,
 )
 from .security_state import (
     CISOBrief,
@@ -33,6 +34,7 @@ from .security_state import (
     ConfidenceLevel,
     SourceLabel,
     SoftwareCategory,
+    SOFTWARE_CATEGORIES,
 )
 from .tools import (
     resolve_entity,
@@ -40,6 +42,7 @@ from .tools import (
     lookup_cves,
     fetch_vendor_security_info,
     lookup_security_incidents,
+    lookup_latest_version,
 )
 from .utils import get_api_key_for_model
 from .debug_logger import get_debug_logger
@@ -50,6 +53,7 @@ class AssessmentState(BaseModel):
     
     # Input
     input_text: str = Field(description="Original input (product name, URL, or SHA1)")
+    product_version: Optional[str] = Field(default=None, description="Product version (optional, defaults to 'latest')")
     
     # Intermediate results
     entity: Optional[Dict[str, Any]] = None
@@ -216,6 +220,7 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
         status_update.append("  📋 FINAL ENTITY DETAILS:")
         status_update.append(f"     • Product Name: {product_name}")
         status_update.append(f"     • Vendor Name: {vendor_name}")
+        status_update.append(f"     • Version: {state.product_version or 'latest (will auto-detect)'}")
         status_update.append(f"     • Website: {website or 'N/A'}")
         status_update.append(f"     • SHA1 Hash: {sha1_hash or 'N/A'}")
         status_update.append(f"     • Confidence: {confidence.upper()}")
@@ -272,7 +277,7 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
 
 
 def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
-    """Classify software into taxonomy."""
+    """Classify software into taxonomy using LLM with comprehensive Gartner categories."""
     logger = get_debug_logger(state.input_text)
     
     try:
@@ -288,7 +293,7 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             status_update.append("  ✓ Defaulting to 'Other' category (low confidence)")
             return {
                 "taxonomy": {
-                    "primary_category": SoftwareCategory.OTHER.value,
+                    "primary_category": "Other",
                     "secondary_categories": [],
                     "confidence": ConfidenceLevel.LOW.value,
                 },
@@ -297,6 +302,8 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             }
         
         product_name = state.entity.get("product_name") or "Unknown"
+        vendor_name = state.entity.get("vendor_name", "")
+        website = state.entity.get("website", "")
         
         # Safety check for None or empty product name
         if not product_name or product_name == "Unknown":
@@ -304,7 +311,7 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             status_update.append("  ✓ Defaulting to 'Other' category (low confidence)")
             return {
                 "taxonomy": {
-                    "primary_category": SoftwareCategory.OTHER.value,
+                    "primary_category": "Other",
                     "secondary_categories": [],
                     "confidence": ConfidenceLevel.LOW.value,
                 },
@@ -313,47 +320,93 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             }
         
         status_update.append(f"  🎯 Analyzing product: '{product_name}'")
-        status_update.append("  🤖 Running taxonomy classification algorithm...")
-        status_update.append("  📋 Checking against 11 software categories...")
+        status_update.append(f"  🤖 Running LLM-based taxonomy classification...")
+        status_update.append(f"  📋 Checking against {len(SOFTWARE_CATEGORIES)} Gartner software categories...")
         
-        # Simple rule-based classification for MVP
-        category = SoftwareCategory.OTHER
-        matched_keywords = []
+        # Get configuration
+        configuration = Configuration.from_runnable_config(config)
         
-        product_lower = product_name.lower()
+        # Initialize LLM (use Gemini model - same pattern as workers)
+        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
+        api_key = get_api_key_for_model(model_name, config)
         
-        # Check each category with keyword matching
-        if any(term in product_lower for term in ["drive", "dropbox", "box", "share", "sync"]):
-            category = SoftwareCategory.FILE_SHARING
-            matched_keywords = [t for t in ["drive", "dropbox", "box", "share", "sync"] if t in product_lower]
-        elif any(term in product_lower for term in ["gpt", "claude", "gemini", "ai", "copilot", "assistant"]):
-            category = SoftwareCategory.GENAI_TOOL
-            matched_keywords = [t for t in ["gpt", "claude", "gemini", "ai", "copilot"] if t in product_lower]
-        elif any(term in product_lower for term in ["slack", "teams", "discord", "zoom", "meet"]):
-            category = SoftwareCategory.COMMUNICATION_PLATFORM
-            matched_keywords = [t for t in ["slack", "teams", "discord", "zoom"] if t in product_lower]
-        elif any(term in product_lower for term in ["salesforce", "hubspot", "crm"]):
-            category = SoftwareCategory.SAAS_CRM
-            matched_keywords = [t for t in ["salesforce", "hubspot", "crm"] if t in product_lower]
-        elif any(term in product_lower for term in ["github", "gitlab", "jenkins", "git", "vscode", "cursor", "ide", "code editor"]):
-            category = SoftwareCategory.DEVELOPMENT_TOOL
-            matched_keywords = [t for t in ["github", "gitlab", "jenkins", "vscode", "cursor", "ide"] if t in product_lower]
-        elif any(term in product_lower for term in ["chrome", "firefox", "extension", "addon"]):
-            category = SoftwareCategory.BROWSER_EXTENSION
-            matched_keywords = [t for t in ["chrome", "firefox", "extension"] if t in product_lower]
+        llm = init_chat_model(
+            model=model_name,
+            model_provider="google_genai",
+            api_key=api_key,
+            temperature=0
+        )
         
-        if matched_keywords:
-            status_update.append(f"  💡 Matched keywords: {', '.join(matched_keywords)}")
+        # Format categories as a numbered list for better LLM processing
+        categories_formatted = "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(SOFTWARE_CATEGORIES)])
+        
+        # Build the classification prompt
+        prompt_text = SOFTWARE_TAXONOMY_PROMPT.format(
+            product_name=product_name,
+            categories_list=categories_formatted
+        )
+        
+        # Add context about vendor and website if available
+        context_info = f"\n\nADDITIONAL CONTEXT:\n"
+        context_info += f"- Product Name: {product_name}\n"
+        if vendor_name:
+            context_info += f"- Vendor: {vendor_name}\n"
+        if website:
+            context_info += f"- Website: {website}\n"
+        
+        prompt_text += context_info
+        
+        status_update.append(f"  🔍 Invoking LLM for classification...")
+        
+        # Invoke LLM
+        response = llm.invoke([HumanMessage(content=prompt_text)])
+        response_text = response.content
+        
+        # Parse JSON response
+        # Clean up markdown formatting if present
+        response_text = response_text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+        
+        classification_result = json.loads(response_text)
+        
+        primary_category = classification_result.get("primary_category", "Other")
+        secondary_categories = classification_result.get("secondary_categories", [])
+        confidence = classification_result.get("confidence", "medium")
+        reasoning = classification_result.get("reasoning", "LLM-based classification")
+        
+        # Validate that primary category is in our list (case-insensitive match)
+        category_lower_map = {cat.lower(): cat for cat in SOFTWARE_CATEGORIES}
+        if primary_category.lower() in category_lower_map:
+            primary_category = category_lower_map[primary_category.lower()]
+        else:
+            # If not found, default to "Other" but keep the LLM's suggestion in reasoning
+            status_update.append(f"  ⚠️  Category '{primary_category}' not in standard list, using as-is")
+        
+        # Validate secondary categories
+        validated_secondary = []
+        for sec_cat in secondary_categories:
+            if sec_cat.lower() in category_lower_map:
+                validated_secondary.append(category_lower_map[sec_cat.lower()])
+            else:
+                validated_secondary.append(sec_cat)
         
         status_update.append(f"  ✓ Classification complete!")
-        status_update.append(f"     • Primary Category: {category.value}")
-        status_update.append(f"     • Confidence: MEDIUM")
-        status_update.append(f"     • Reasoning: Pattern-based keyword matching")
+        status_update.append(f"     • Primary Category: {primary_category}")
+        if validated_secondary:
+            status_update.append(f"     • Secondary Categories: {', '.join(validated_secondary)}")
+        status_update.append(f"     • Confidence: {confidence.upper()}")
+        status_update.append(f"     • Reasoning: {reasoning}")
         
         taxonomy_data = {
-            "primary_category": category.value,
-            "secondary_categories": [],
-            "confidence": ConfidenceLevel.MEDIUM.value,
+            "primary_category": primary_category,
+            "secondary_categories": validated_secondary,
+            "confidence": confidence,
         }
         
         # Log Phase 2 results
@@ -366,14 +419,16 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         }
     except Exception as e:
         logger.log_error("Software Classification", e)
+        status_update.append(f"  ✗ Classification failed: {str(e)}")
+        status_update.append(f"  ✓ Defaulting to 'Other' category")
         return {
             "taxonomy": {
-                "primary_category": SoftwareCategory.OTHER.value,
+                "primary_category": "Other",
                 "secondary_categories": [],
                 "confidence": ConfidenceLevel.LOW.value,
             },
             "errors": state.errors + [f"Classification failed: {str(e)}"],
-            "status_messages": state.status_messages + [f"✗ Classification failed: {str(e)}"],
+            "status_messages": state.status_messages + status_update,
             "current_step": "Classification Failed"
         }
 
@@ -410,20 +465,52 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         all_data = {}
         citation_count = 0
         
+        # [0] Version Detection (if not provided)
+        resolved_version = state.product_version
+        if not resolved_version or resolved_version == "latest":
+            status_update.append("  [0/6] 🔢 VERSION DETECTION")
+            status_update.append("        ├─ No version specified, looking up latest version...")
+            try:
+                version_result = lookup_latest_version.invoke({
+                    "product_name": product_name,
+                    "vendor_name": vendor_name
+                })
+                
+                if version_result.get("found"):
+                    resolved_version = version_result.get("version")
+                    status_update.append(f"        ├─ ✓ Found latest version: {resolved_version}")
+                    status_update.append(f"        └─ Source: {version_result.get('source', 'Tavily search')}")
+                else:
+                    resolved_version = "latest"
+                    status_update.append("        └─ ⚠️  Could not determine version, using 'latest'")
+            except Exception as e:
+                resolved_version = "latest"
+                status_update.append(f"        └─ ⚠️  Version lookup failed: {str(e)}")
+            
+            status_update.append("")
+        else:
+            status_update.append(f"  📌 Using specified version: {resolved_version}")
+            status_update.append("")
+        
         # [1] CVE Databases
         status_update.append("  [1/6] 🛡️  VULNERABILITY DATABASES")
         cve_data = None
         try:
-            # Always use product_name for CVE searches
-            cve_input = {"product_name": product_name, "vendor_name": vendor_name}
+            # Use resolved_version (either user-provided or auto-detected)
+            cve_input = {
+                "product_name": product_name,
+                "vendor_name": vendor_name,
+                "product_version": resolved_version
+            }
             logger.log_tool_call("lookup_cves", cve_input)
             cve_data = lookup_cves.invoke(cve_input)
             logger.log_tool_call("lookup_cves", cve_input, cve_data)
             cve_count = cve_data.get('total_cves', 0)
-            status_update.append(f"        ├─ NVD: {cve_count} CVEs found ({cve_data.get('critical_count', 0)} critical)")
+            version_str = f" for version {resolved_version}" if resolved_version and resolved_version != "latest" else ""
+            status_update.append(f"        ├─ NVD: {cve_count} CVEs found{version_str} ({cve_data.get('critical_count', 0)} critical)")
             citation_count += 1
         except Exception as e:
-            logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name}, error=e)
+            logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
             cve_data = {"total_cves": 0, "data_available": False}
             status_update.append("        ├─ NVD: Query failed")
         
@@ -669,6 +756,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             "vendor_data": vendor_data,
             "incident_data": incident_data,
             "additional_data": all_data,  # Store all extra data
+            "product_version": resolved_version,  # Update with resolved version
             "messages": state.messages + [
                 AIMessage(content=f"Security data gathered from {citation_count} sources")
             ],
@@ -730,7 +818,7 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         
         # Prepare taxonomy
         taxonomy_data = SoftwareTaxonomy(**state.taxonomy) if state.taxonomy else SoftwareTaxonomy(
-            primary_category=SoftwareCategory.OTHER,
+            primary_category="Other",
             confidence=ConfidenceLevel.LOW
         )
         
@@ -890,6 +978,67 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         if len(source_names) > 6:
             status_update.append(f"        │  └─ ...and {len(source_names) - 6} more")
         
+        # Process threat intelligence and advisories from additional_data
+        advisory_penalty = 0
+        if state.additional_data:
+            # Check GitHub Advisories - add to risk
+            gh_advisories = state.additional_data.get('github_advisories', {})
+            if gh_advisories.get('advisory_count', 0) > 0:
+                advisory_penalty += gh_advisories['advisory_count'] * 0.3
+            
+            # Check US-CERT Advisories - add to risk (government warnings are serious)
+            cert_advisories = state.additional_data.get('us_cert', {})
+            if cert_advisories.get('advisory_count', 0) > 0:
+                advisory_penalty += cert_advisories['advisory_count'] * 0.5
+            
+            # Check MalwareBazaar - major risk if malware detected
+            malware_data = state.additional_data.get('malwarebazaar', {})
+            if malware_data.get('malware_detected'):
+                risk_score = min(100, risk_score + 25)
+                trust_score = max(0, trust_score - 20)
+                status_update.append("        ⚠️  ALERT: Malware samples detected in MalwareBazaar")
+            
+            # Check URLhaus - major risk if malicious URLs found
+            urlhaus_data = state.additional_data.get('urlhaus', {})
+            if urlhaus_data.get('malicious_urls_found', 0) > 0:
+                risk_score = min(100, risk_score + 20)
+                trust_score = max(0, trust_score - 15)
+                status_update.append("        ⚠️  ALERT: Malicious URLs detected in URLhaus")
+            
+            # Check AlienVault OTX - moderate risk if threats found
+            otx_data = state.additional_data.get('otx', {})
+            if otx_data.get('threat_found'):
+                risk_score = min(100, risk_score + 15)
+                trust_score = max(0, trust_score - 10)
+                status_update.append("        ⚠️  WARNING: Threat indicators in AlienVault OTX")
+            
+            # Check WHOIS domain age - older domains = more trust
+            whois_data = state.additional_data.get('whois', {})
+            if whois_data.get('creation_date'):
+                try:
+                    from datetime import datetime
+                    creation_date = whois_data['creation_date']
+                    if isinstance(creation_date, str) and len(creation_date) >= 4:
+                        year = int(creation_date[:4])
+                        current_year = datetime.now().year
+                        domain_age = current_year - year
+                        
+                        if domain_age >= 10:
+                            trust_score = min(100, trust_score + 5)
+                            status_update.append(f"        ✓ Domain age: {domain_age} years (trust bonus)")
+                        elif domain_age >= 5:
+                            trust_score = min(100, trust_score + 3)
+                        elif domain_age < 2:
+                            trust_score = max(0, trust_score - 5)
+                            status_update.append(f"        ⚠️  Domain age: {domain_age} years (new domain)")
+                except:
+                    pass
+        
+        # Apply advisory penalty to risk score
+        if advisory_penalty > 0:
+            risk_score = min(100, risk_score + int(advisory_penalty))
+            status_update.append(f"        ⚠️  Additional advisories: {int(advisory_penalty)} risk points added")
+        
         if data_sources >= 2:
             confidence = ConfidenceLevel.MEDIUM
         elif data_sources >= 1:
@@ -908,35 +1057,103 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         
         status_update.append("")
         status_update.append("  [Step 4/5] 🔄 Identifying safer alternatives...")
-        status_update.append(f"        ├─ Category: {taxonomy_data.primary_category.value}")
+        status_update.append(f"        ├─ Category: {taxonomy_data.primary_category}")
         status_update.append("        ├─ Searching alternative database...")
         
-        # Generate alternatives
+        # Generate alternatives - use Phase 3 collected data only
         alternatives = []
-        if taxonomy_data.primary_category == SoftwareCategory.FILE_SHARING:
-            status_update.append("        ├─ Found: Tresorit")
-            status_update.append("        │  └─ Reason: E2E encryption, zero-knowledge")
-            alternatives = [
-                AlternativeProduct(
-                    product_name="Tresorit",
-                    vendor_name="Tresorit AG",
-                    rationale="End-to-end encryption, zero-knowledge architecture, Swiss privacy laws"
-                )
-            ]
-        elif taxonomy_data.primary_category == SoftwareCategory.COMMUNICATION_PLATFORM:
-            status_update.append("        ├─ Found: Signal")
-            status_update.append("        │  └─ Reason: Open-source, privacy-focused")
-            alternatives = [
-                AlternativeProduct(
-                    product_name="Signal",
-                    vendor_name="Signal Foundation",
-                    rationale="Open-source, end-to-end encryption by default, privacy-focused"
-                )
-            ]
-        else:
-            status_update.append("        ├─ No pre-configured alternatives for this category")
         
-        status_update.append(f"        └─ ✓ Alternatives identified: {len(alternatives)}")
+        # Try to use alternatives from Phase 3 data gathering
+        if state.additional_data and 'alternatives' in state.additional_data:
+            alt_data = state.additional_data['alternatives']
+            if alt_data.get('alternatives') and isinstance(alt_data['alternatives'], list):
+                status_update.append(f"        ├─ Processing {len(alt_data['alternatives'])} search results from Phase 3...")
+                
+                # Collect all summaries to extract product names using LLM
+                summaries_text = ""
+                for i, alt in enumerate(alt_data['alternatives'][:5]):
+                    if isinstance(alt, dict):
+                        content = alt.get('summary', alt.get('content', ''))
+                        if content:
+                            summaries_text += f"\nResult {i+1}: {content[:300]}\n"
+                
+                if summaries_text:
+                    try:
+                        # Use LLM to extract actual product names from summaries
+                        extraction_prompt = f"""Extract the actual alternative product/software names mentioned in these search results.
+
+Search results about alternatives to "{state.entity.get('product_name', 'the product')}":
+{summaries_text}
+
+Return ONLY a JSON array of the top 1 to 2 alternative products mentioned, with this format:
+[
+  {{"product_name": "Product Name", "vendor_name": "Vendor Name", "reason": "brief reason why it's an alternative"}},
+  ...
+]
+
+IMPORTANT:
+- Extract ACTUAL product names (e.g., "Microsoft Teams", "Slack", "Google Workspace")
+- Do NOT include generic terms like "alternatives", "competitors", "best tools"
+- Only include products that are clearly mentioned as alternatives
+- Limit to top 1 to 2 most relevant alternatives
+- If no vendor names are found, dont return them.
+- If no product names are found, dont return the product name
+- If no reason is found, dont return the reason
+- Return ONLY the JSON array, no other text"""
+
+
+                        # Get configuration and initialize LLM
+                        configuration = Configuration.from_runnable_config(config)
+                        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
+                        api_key = get_api_key_for_model(model_name, config)
+                        
+                        llm = init_chat_model(
+                            model=model_name,
+                            model_provider="google_genai",
+                            api_key=api_key,
+                            temperature=0
+                        )
+                        
+                        response = llm.invoke([HumanMessage(content=extraction_prompt)])
+                        response_text = response.content.strip()
+                        
+                        # Clean JSON formatting
+                        if response_text.startswith("```json"):
+                            response_text = response_text[7:]
+                        if response_text.startswith("```"):
+                            response_text = response_text[3:]
+                        if response_text.endswith("```"):
+                            response_text = response_text[:-3]
+                        response_text = response_text.strip()
+                        
+                        extracted_products = json.loads(response_text)
+                        
+                        # Convert to AlternativeProduct objects
+                        for product in extracted_products:
+                            if isinstance(product, dict):
+                                prod_name = product.get('product_name', '').strip()
+                                vendor = product.get('vendor_name', '').strip()
+                                reason = product.get('reason', 'Alternative product')
+                                
+                                if prod_name and prod_name.lower() not in ['unknown', 'alternatives', 'competitors']:
+                                    alternatives.append(AlternativeProduct(
+                                        product_name=prod_name,
+                                        vendor_name=vendor,
+                                        rationale=reason
+                                    ))
+                                    status_update.append(f"        │  • {prod_name} ({vendor})")
+                        
+                        if alternatives:
+                            status_update.append(f"        ├─ ✓ Extracted {len(alternatives)} products using LLM")
+                    
+                    except Exception as e:
+                        status_update.append(f"        ├─ ⚠️  LLM extraction failed: {str(e)}")
+        
+        # Report results
+        if alternatives:
+            status_update.append(f"        └─ ✓ Found {len(alternatives)} alternatives from Phase 3 data")
+        else:
+            status_update.append(f"        └─ ⚠️  No alternatives found")
         
         # Build citations from ALL sources
         citations = []
@@ -1055,6 +1272,24 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
                 if 'third party' in content_lower or 'third-party' in content_lower:
                     third_party_sharing = "Mentioned in ToS (see document)"
         
+        # Parse Company Info for vendor reputation enhancement
+        if state.additional_data and state.additional_data.get('company'):
+            company_data = state.additional_data['company']
+            if company_data.get('founded_year'):
+                try:
+                    from datetime import datetime
+                    founded_year = int(company_data['founded_year'])
+                    current_year = datetime.now().year
+                    company_age = current_year - founded_year
+                    
+                    # Update vendor reputation with company age
+                    if company_age >= 20:
+                        trust_score = min(100, trust_score + 5)
+                    elif company_age >= 10:
+                        trust_score = min(100, trust_score + 3)
+                except:
+                    pass
+        
         # Parse Privacy Policy data
         if state.additional_data and state.additional_data.get('privacy'):
             privacy_data = state.additional_data['privacy']
@@ -1102,8 +1337,8 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         ciso_brief = CISOBrief(
             entity=entity_data,
             taxonomy=taxonomy_data,
-            description=f"{entity_data.product_name} is a {taxonomy_data.primary_category.value} solution.",
-            usage=f"Typically used for {taxonomy_data.primary_category.value} purposes in enterprise environments.",
+            description=f"{entity_data.product_name} is a {taxonomy_data.primary_category} solution.",
+            usage=f"Typically used for {taxonomy_data.primary_category} purposes in enterprise environments.",
             vendor_reputation=vendor_reputation,
             cve_summary=cve_summary,
             incidents=incident_report,
@@ -1135,7 +1370,7 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         status_update.append("")
         status_update.append("  📋 Summary:")
         status_update.append(f"     • Product: {entity_data.product_name}")
-        status_update.append(f"     • Category: {taxonomy_data.primary_category.value}")
+        status_update.append(f"     • Category: {taxonomy_data.primary_category}")
         status_update.append(f"     • Trust Score: {trust_score}/100")
         status_update.append(f"     • Risk Score: {risk_score}/100")
         status_update.append(f"     • Confidence: {confidence.value.upper()}")

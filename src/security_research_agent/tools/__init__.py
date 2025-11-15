@@ -9,6 +9,7 @@ from .entity_resolution import (
     resolve_entity,
     resolve_entity_complete,
     detect_input_type,
+    lookup_latest_version,
 )
 
 from .vulnerability import (
@@ -119,6 +120,7 @@ __all__ = [
     'resolve_entity',
     'resolve_entity_complete',
     'detect_input_type',
+    'lookup_latest_version',
     
     # Vulnerabilities
     'lookup_cves',
