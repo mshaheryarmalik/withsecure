@@ -177,9 +177,11 @@ Provide:
 
 Remember: This is independent source data from NVD."""
 
-RISK_SCORING_PROMPT = """Calculate Trust Score and Risk Score ONLY based on the data provided below. DO NOT make up or assume any additional information.
+RISK_SCORING_PROMPT = """Calculate Trust Score and Risk Score STRICTLY ONLY based on the data provided below.
 
-VERIFIED ENTITY INFORMATION (USE THIS EXACTLY):
+⚠️ CRITICAL: DO NOT MAKE UP ANY FACTS. DO NOT ASSUME ANYTHING. USE ONLY THE VALUES PROVIDED BELOW.
+
+VERIFIED ENTITY INFORMATION (USE THIS EXACTLY - DO NOT INVENT):
 - Product: {product_name}
 - Vendor: {vendor_name}
 - Website: {website}
@@ -193,28 +195,38 @@ Incidents (from HIBP/News - independent sources):
 - Breaches: {breaches}
 - Total incidents: {incidents}
 
-Compliance (vendor-stated unless verified):
-- SOC2: {soc2}
-- ISO: {iso_count}
-- GDPR: {gdpr}
+Compliance (vendor-stated):
+- Certifications: {soc2}
+- ISO Count: {iso_count}
+- GDPR in certs: {gdpr}
 
 Data Handling (vendor-stated):
-- Encryption: {encryption}
+- Encryption stated: {encryption}
 - ToS found: {tos_found}
 
-IMPORTANT RULES:
-1. Return ONLY a JSON object with: {{"trust_score": 50, "risk_score": 50, "rationale": "2-3 sentence explanation"}}
-2. DO NOT re-describe the entity - we already have that data
-3. DO NOT make up vendor names or websites - use ONLY what's provided above
-4. Base scores ONLY on the metrics provided
-5. If data is missing, mention it but don't assume values
+⚠️ CRITICAL CONSTRAINTS:
+1. Return ONLY a JSON object: {{"trust_score": 50, "risk_score": 50, "rationale": "explanation"}}
+2. In the rationale, reference ONLY the exact values provided above
+3. DO NOT claim encryption is "confirmed" if encryption={encryption} is False
+4. DO NOT claim GDPR is "false" if gdpr={gdpr} is True - use the actual value
+5. DO NOT claim ISO certifications exist if iso_count={iso_count} is 0
+6. DO NOT re-interpret or invent facts - use the data AS IS
+7. If a value is "Not stated", "Unknown", or False, acknowledge it in rationale
 
-Trust/Risk Score Guidelines:
-- High CVE count or CISA KEV = Lower trust (40-50), Higher risk (60-70)
-- Data breaches = Lower trust (30-40), Higher risk (70-80)
-- Good compliance = Higher trust (60-70), Lower risk (30-40)
-- Few/no issues = Higher trust (70-80), Lower risk (20-30)
-- Missing data = Moderate trust (50), Moderate risk (50)"""
+SCORING ALGORITHM (base on ACTUAL values above):
+- Base trust: 50, base risk: 50
+- Total CVEs > 50: trust -10, risk +10
+- Critical CVEs > 5: trust -10, risk +10
+- Breaches > 0: trust -20, risk +20
+- ISO count > 0: trust +5 per cert
+- GDPR=True: trust +5
+- Encryption=True: trust +5
+- Missing data: mention in rationale but don't penalize
+
+RATIONALE TEMPLATE:
+"[Product] has [total_cves] CVEs (critical: [critical]). [Breaches] breaches found. Compliance: [describe from soc2/iso_count/gdpr]. [Encryption status]. [Overall assessment]."
+
+Return ONLY valid JSON with these exact numbers."""
 
 ALTERNATIVES_PROMPT = """Suggest 1-2 safer alternatives to "{product_name}" (category: {category}).
 

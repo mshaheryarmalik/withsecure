@@ -53,6 +53,7 @@ class EntityResolution(BaseModel):
     """Resolved entity information from minimal input."""
     
     product_name: str = Field(description="Canonical product name")
+    original_name: Optional[str] = Field(default=None, description="Original input name (for CVE/vulnerability searches)")
     vendor_name: str = Field(description="Vendor/company name")
     website: Optional[str] = Field(default=None, description="Official website URL")
     verified: bool = Field(default=False, description="Whether entity resolution was verified")

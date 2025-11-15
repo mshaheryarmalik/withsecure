@@ -41,6 +41,7 @@ from .tools import (
     lookup_security_incidents,
 )
 from .utils import get_api_key_for_model
+from .debug_logger import get_debug_logger
 
 
 class AssessmentState(BaseModel):
@@ -73,6 +74,9 @@ class AssessmentState(BaseModel):
 
 def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
     """Resolve entity from input."""
+    # Initialize debug logger
+    logger = get_debug_logger(state.input_text)
+    
     try:
         # Update status with detailed reasoning
         status_update = [
@@ -101,7 +105,9 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
             status_update.append("  📊 Step 3: Extracting official product/vendor/website...")
         
         # Use the resolve_entity tool
+        logger.log_tool_call("resolve_entity", {"input_text": state.input_text})
         entity_result = resolve_entity.invoke(state.input_text)
+        logger.log_tool_call("resolve_entity", {"input_text": state.input_text}, entity_result)
         
         product_name = entity_result.get('product_name', 'Unknown')
         vendor_name = entity_result.get('vendor_name', 'Unknown')
@@ -134,6 +140,9 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
             reputation = entity_result.get('file_reputation', 'Unknown')
             status_update.append(f"     • File Reputation: {reputation}")
         
+        # Log Phase 1 results
+        logger.log_phase(1, "Entity Resolution", entity_result, "SUCCESS")
+        
         return {
             "entity": entity_result,
             "messages": state.messages + [
@@ -143,6 +152,7 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
             "current_step": "Entity Resolved"
         }
     except Exception as e:
+        logger.log_error("Entity Resolution", e)
         return {
             "entity": None,
             "errors": state.errors + [f"Entity resolution failed: {str(e)}"],
@@ -153,6 +163,8 @@ def resolve_entity_node(state: AssessmentState, config: RunnableConfig) -> Dict[
 
 def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
     """Classify software into taxonomy."""
+    logger = get_debug_logger(state.input_text)
+    
     try:
         status_update = [
             "",
@@ -228,16 +240,22 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         status_update.append(f"     • Confidence: MEDIUM")
         status_update.append(f"     • Reasoning: Pattern-based keyword matching")
         
+        taxonomy_data = {
+            "primary_category": category.value,
+            "secondary_categories": [],
+            "confidence": ConfidenceLevel.MEDIUM.value,
+        }
+        
+        # Log Phase 2 results
+        logger.log_phase(2, "Software Classification", taxonomy_data, "SUCCESS")
+        
         return {
-            "taxonomy": {
-                "primary_category": category.value,
-                "secondary_categories": [],
-                "confidence": ConfidenceLevel.MEDIUM.value,
-            },
+            "taxonomy": taxonomy_data,
             "status_messages": state.status_messages + status_update,
             "current_step": "Classification Complete"
         }
     except Exception as e:
+        logger.log_error("Software Classification", e)
         return {
             "taxonomy": {
                 "primary_category": SoftwareCategory.OTHER.value,
@@ -252,6 +270,8 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
 
 def gather_security_data_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
     """Gather security data from ALL available sources in parallel."""
+    logger = get_debug_logger(state.input_text)
+    
     try:
         from .tools import (
             lookup_cves, fetch_vendor_security_info, lookup_security_incidents,
@@ -264,6 +284,8 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         product_name = state.entity.get("product_name", "Unknown") if state.entity else "Unknown"
         vendor_name = state.entity.get("vendor_name", "Unknown") if state.entity else "Unknown"
         website = state.entity.get("website") if state.entity else None
+        # Use original_name for CVE searches (e.g., "redis" instead of "Redis (database)")
+        original_name = state.entity.get("original_name", product_name) if state.entity else product_name
         
         status_update = [
             "",
@@ -271,6 +293,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             "🔐 PHASE 3: COMPREHENSIVE SECURITY DATA GATHERING",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             f"  🎯 Target: {product_name}",
+            f"  🔍 CVE Search Name: {original_name}",  # Show which name is used for CVE search
             f"  📡 Querying 15+ security databases and sources...",
             ""
         ]
@@ -283,17 +306,22 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         status_update.append("  [1/6] 🛡️  VULNERABILITY DATABASES")
         cve_data = None
         try:
-            cve_data = lookup_cves.invoke({"product_name": product_name, "vendor_name": vendor_name})
+            # Use original_name for CVE searches (more likely to match NVD entries)
+            cve_input = {"product_name": original_name, "vendor_name": vendor_name}
+            logger.log_tool_call("lookup_cves", cve_input)
+            cve_data = lookup_cves.invoke(cve_input)
+            logger.log_tool_call("lookup_cves", cve_input, cve_data)
             cve_count = cve_data.get('total_cves', 0)
             status_update.append(f"        ├─ NVD: {cve_count} CVEs found ({cve_data.get('critical_count', 0)} critical)")
             citation_count += 1
-        except:
+        except Exception as e:
+            logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name}, error=e)
             cve_data = {"total_cves": 0, "data_available": False}
             status_update.append("        ├─ NVD: Query failed")
         
         # GitHub Advisories
         try:
-            gh_data = lookup_github_advisories.invoke({"product_name": product_name})
+            gh_data = lookup_github_advisories.invoke({"product_name": original_name})
             if gh_data.get('advisory_count', 0) > 0:
                 status_update.append(f"        ├─ GitHub Advisories: {gh_data['advisory_count']} found")
                 all_data['github_advisories'] = gh_data
@@ -303,7 +331,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         
         # US-CERT
         try:
-            cert_data = search_us_cert_advisories.invoke({"product_name": product_name})
+            cert_data = search_us_cert_advisories.invoke({"product_name": original_name})
             if cert_data.get('advisory_count', 0) > 0:
                 status_update.append(f"        └─ US-CERT: {cert_data['advisory_count']} advisories")
                 all_data['us_cert'] = cert_data
@@ -317,24 +345,32 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         vendor_data = None
         if website:
             try:
-                vendor_data = fetch_vendor_security_info.invoke({"website_url": website, "vendor_name": vendor_name})
+                vendor_input = {"website_url": website, "vendor_name": vendor_name}
+                logger.log_tool_call("fetch_vendor_security_info", vendor_input)
+                vendor_data = fetch_vendor_security_info.invoke(vendor_input)
+                logger.log_tool_call("fetch_vendor_security_info", vendor_input, vendor_data)
                 certs = vendor_data.get('claimed_certifications', [])
                 if certs:
                     status_update.append(f"        ├─ Compliance: {', '.join(certs[:3])}")
                     citation_count += 1
                 else:
                     status_update.append("        ├─ Compliance: No certifications found")
-            except:
+            except Exception as e:
+                logger.log_tool_call("fetch_vendor_security_info", {"website_url": website, "vendor_name": vendor_name}, error=e)
                 vendor_data = {"security_page_found": False, "claimed_certifications": []}
             
             # ToS/Privacy/DPA
             try:
-                tos_data = fetch_terms_of_service.invoke({"website_url": website, "product_name": product_name})
+                tos_input = {"website_url": website, "product_name": product_name}
+                logger.log_tool_call("fetch_terms_of_service", tos_input)
+                tos_data = fetch_terms_of_service.invoke(tos_input)
+                logger.log_tool_call("fetch_terms_of_service", tos_input, tos_data)
                 if tos_data.get('found'):
                     status_update.append("        ├─ Terms of Service: Found")
                     all_data['tos'] = tos_data
                     citation_count += 1
-            except:
+            except Exception as e:
+                logger.log_tool_call("fetch_terms_of_service", {"website_url": website, "product_name": product_name}, error=e)
                 pass
             
             try:
@@ -480,6 +516,16 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         status_update.append("")
         status_update.append(f"  ✓ Data collection complete! {citation_count} sources queried successfully.")
         
+        # Log Phase 3 results
+        phase3_data = {
+            "cve_data": cve_data,
+            "vendor_data": vendor_data,
+            "incident_data": incident_data,
+            "additional_sources_count": len(all_data),
+            "additional_sources": list(all_data.keys()) if all_data else []
+        }
+        logger.log_phase(3, "Security Data Gathering", phase3_data, "SUCCESS")
+        
         return {
             "cve_data": cve_data,
             "vendor_data": vendor_data,
@@ -492,6 +538,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             "current_step": "Security Data Gathered"
         }
     except Exception as e:
+        logger.log_error("Security Data Gathering", e)
         return {
             "errors": state.errors + [f"Data gathering failed: {str(e)}"],
             "status_messages": state.status_messages + [f"✗ Data gathering failed: {str(e)}"],
@@ -501,6 +548,8 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
 
 def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> Dict[str, Any]:
     """Generate final CISO brief with LLM."""
+    logger = get_debug_logger(state.input_text)
+    
     try:
         status_update = [
             "",
@@ -562,7 +611,39 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             data_available=False
         )
         
-        # Calculate scores using LLM - provide ALL verified entity data
+        # PARSE COMPLIANCE DATA FIRST (before LLM scoring) to use actual values
+        encryption_mentioned = False
+        iso_certs = []
+        gdpr_in_certs = False
+        
+        # Extract ISO certifications
+        if vendor_reputation.claimed_certifications:
+            for cert in vendor_reputation.claimed_certifications:
+                if 'ISO' in cert:
+                    from .security_state import CertificationDetail
+                    iso_certs.append(CertificationDetail(
+                        certification_type=cert,
+                        status="claimed",
+                        source_label=SourceLabel.VENDOR_STATED
+                    ))
+                if 'GDPR' in cert:
+                    gdpr_in_certs = True
+        
+        # Parse ToS/Privacy/DPA for encryption mentions
+        if state.additional_data:
+            if state.additional_data.get('tos') and state.additional_data['tos'].get('content'):
+                if 'encrypt' in state.additional_data['tos']['content'].lower():
+                    encryption_mentioned = True
+            
+            if not encryption_mentioned and state.additional_data.get('privacy') and state.additional_data['privacy'].get('content'):
+                if 'encrypt' in state.additional_data['privacy']['content'].lower():
+                    encryption_mentioned = True
+            
+            if not encryption_mentioned and state.additional_data.get('dpa') and state.additional_data['dpa'].get('content'):
+                if 'encrypt' in state.additional_data['dpa']['content'].lower():
+                    encryption_mentioned = True
+        
+        # Calculate scores using LLM - provide ALL PARSED data
         scoring_prompt = RISK_SCORING_PROMPT.format(
             product_name=entity_data.product_name,
             vendor_name=entity_data.vendor_name,
@@ -575,9 +656,9 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             breaches=incident_report.breach_count,
             incidents=len(incident_report.incidents),
             soc2=vendor_reputation.claimed_certifications,
-            iso_count=len([c for c in vendor_reputation.claimed_certifications if 'ISO' in c]),
-            gdpr='GDPR' in str(vendor_reputation.claimed_certifications),
-            encryption=True,  # Default assumption
+            iso_count=len(iso_certs),
+            gdpr=gdpr_in_certs,
+            encryption=encryption_mentioned,
             tos_found=bool(state.additional_data and state.additional_data.get('tos')),
         )
         
@@ -798,26 +879,85 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         status_update.append("        ├─ Adding insufficiency notes")
         status_update.append("        └─ Formatting markdown output")
         
-        # Check for GDPR in ToS/Privacy/DPA from additional_data
+        # Parse compliance data from all sources
         gdpr_compliant = False
         gdpr_source = "Unknown"
+        encryption_mentioned = False
+        encryption_source = "Not stated"
+        data_retention_policy = "Not specified"
+        third_party_sharing = "Not specified"
         
-        if state.additional_data:
-            # Check DPA for GDPR (field: gdpr_mentioned)
-            if state.additional_data.get('dpa') and state.additional_data['dpa'].get('gdpr_mentioned'):
+        # Extract ISO certifications from vendor_reputation
+        iso_certs = []
+        if vendor_reputation.claimed_certifications:
+            for cert in vendor_reputation.claimed_certifications:
+                if 'ISO' in cert:
+                    from .security_state import CertificationDetail
+                    iso_certs.append(CertificationDetail(
+                        certification_type=cert,
+                        status="claimed",
+                        source_label=SourceLabel.VENDOR_STATED
+                    ))
+        
+        # Parse ToS data
+        if state.additional_data and state.additional_data.get('tos'):
+            tos_data = state.additional_data['tos']
+            # Extract any compliance mentions from ToS
+            if tos_data.get('content'):
+                content_lower = tos_data['content'].lower()
+                if 'gdpr' in content_lower and not gdpr_compliant:
+                    gdpr_compliant = True
+                    gdpr_source = "ToS (vendor-stated)"
+                if 'encrypt' in content_lower:
+                    encryption_mentioned = True
+                    encryption_source = "ToS (vendor-stated)"
+                if 'retention' in content_lower or 'retain' in content_lower:
+                    data_retention_policy = "Mentioned in ToS (see document)"
+                if 'third party' in content_lower or 'third-party' in content_lower:
+                    third_party_sharing = "Mentioned in ToS (see document)"
+        
+        # Parse Privacy Policy data
+        if state.additional_data and state.additional_data.get('privacy'):
+            privacy_data = state.additional_data['privacy']
+            if privacy_data.get('gdpr_compliance'):
+                gdpr_compliant = True
+                gdpr_source = "Privacy Policy (vendor-stated)"
+            if privacy_data.get('content'):
+                content_lower = privacy_data['content'].lower()
+                if 'encrypt' in content_lower and not encryption_mentioned:
+                    encryption_mentioned = True
+                    encryption_source = "Privacy Policy (vendor-stated)"
+                if ('retention' in content_lower or 'retain' in content_lower) and data_retention_policy == "Not specified":
+                    data_retention_policy = "Mentioned in Privacy Policy (see document)"
+                if ('third party' in content_lower or 'third-party' in content_lower) and third_party_sharing == "Not specified":
+                    third_party_sharing = "Mentioned in Privacy Policy (see document)"
+        
+        # Parse DPA data
+        if state.additional_data and state.additional_data.get('dpa'):
+            dpa_data = state.additional_data['dpa']
+            if dpa_data.get('gdpr_mentioned'):
                 gdpr_compliant = True
                 gdpr_source = "DPA (vendor-stated)"
-            
-            # Check Privacy Policy for GDPR (field: gdpr_compliance)
-            if not gdpr_compliant and state.additional_data.get('privacy'):
-                if state.additional_data['privacy'].get('gdpr_compliance'):
-                    gdpr_compliant = True
-                    gdpr_source = "Privacy Policy (vendor-stated)"
+            if dpa_data.get('content'):
+                content_lower = dpa_data['content'].lower()
+                if 'encrypt' in content_lower and not encryption_mentioned:
+                    encryption_mentioned = True
+                    encryption_source = "DPA (vendor-stated)"
+                if ('retention' in content_lower or 'retain' in content_lower) and data_retention_policy == "Not specified":
+                    data_retention_policy = "Mentioned in DPA (see document)"
         
-        # Fallback to vendor certifications
+        # Fallback to vendor certifications for GDPR
         if not gdpr_compliant and 'GDPR' in str(vendor_reputation.claimed_certifications):
             gdpr_compliant = True
-            gdpr_source = "Vendor claim"
+            gdpr_source = "Vendor security page"
+        
+        # Determine SOC2 status
+        soc2_status = 'not_found'
+        if vendor_reputation.claimed_certifications:
+            for cert in vendor_reputation.claimed_certifications:
+                if 'SOC' in cert or 'SOC2' in cert or 'SOC 2' in cert:
+                    soc2_status = 'claimed'
+                    break
         
         # Create CISO brief using ONLY structured state data (no LLM hallucination)
         ciso_brief = CISOBrief(
@@ -829,12 +969,15 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             cve_summary=cve_summary,
             incidents=incident_report,
             compliance=ComplianceStatus(
-                soc2_status='claimed' if 'SOC2' in str(vendor_reputation.claimed_certifications) else 'not_found',
-                iso_certifications=[],
+                soc2_status=soc2_status,
+                iso_certifications=iso_certs,
                 gdpr_compliant=gdpr_compliant,
             ),
             data_handling=DataHandling(
                 tos_url=entity_data.website,
+                encryption=encryption_mentioned,
+                data_retention=data_retention_policy,
+                third_party_sharing=third_party_sharing,
                 source_label=SourceLabel.VENDOR_STATED,
             ),
             deployment_controls="Standard SaaS deployment with admin controls (specifics require vendor documentation)",
@@ -863,6 +1006,22 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         status_update.append("")
         status_update.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         
+        # Log Phase 4 results
+        phase4_data = {
+            "trust_score": trust_score,
+            "risk_score": risk_score,
+            "rationale": rationale[:500],  # Truncate for readability
+            "confidence": confidence.value,
+            "alternatives_count": len(alternatives)
+        }
+        logger.log_phase(4, "AI Analysis & Brief Generation", phase4_data, "SUCCESS")
+        
+        # Log final summary
+        logger.log_summary(ciso_brief.model_dump())
+        
+        # Print log file location
+        status_update.append(f"\n📝 Debug log saved to: {logger.get_log_path()}")
+        
         return {
             "ciso_brief": ciso_brief,
             "messages": state.messages + [
@@ -872,6 +1031,7 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             "current_step": "Complete"
         }
     except Exception as e:
+        logger.log_error("Brief Generation", e)
         return {
             "errors": state.errors + [f"Brief generation failed: {str(e)}"],
             "status_messages": state.status_messages + [f"✗ Brief generation failed: {str(e)}"],

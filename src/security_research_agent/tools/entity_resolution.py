@@ -176,9 +176,15 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
         
         if not google_api_key:
             # Fallback to basic resolution
+            simple_name = domain.replace('www.', '').split('.')[0]  # Extract base name for CVE searches
+            product_name = simple_name.title()
+            # Normalize for CVE searches
+            original_name = re.sub(r'[^a-z0-9\-_]', '', simple_name.lower())
+            
             return {
-                "product_name": domain.replace('www.', '').split('.')[0].title(),
-                "vendor_name": domain,
+                "product_name": product_name,
+                "original_name": original_name,  # Normalized for CVE searches
+                "vendor_name": product_name,  # Use product name as vendor for consistency
                 "website": url,
                 "verified": False,
                 "input_type": InputType.URL.value,
@@ -301,9 +307,20 @@ IMPORTANT:
             ConfidenceLevel.MEDIUM.value
         )
         
+        # Extract simple product name for CVE searches
+        product_name = entity_data.get("product_name", domain)
+        vendor_name = entity_data.get("vendor_name", domain)
+        
+        # Use domain base name as original for CVE searches (e.g., "redis" from "redis.io")
+        simple_name = domain.replace('www.', '').split('.')[0].lower()
+        
+        # Normalize original_name for CVE searches (remove special chars)
+        original_name = re.sub(r'[^a-z0-9\-_]', '', simple_name)
+        
         return {
-            "product_name": entity_data.get("product_name", domain),
-            "vendor_name": entity_data.get("vendor_name", domain),
+            "product_name": product_name,
+            "original_name": original_name,  # Normalized for CVE searches
+            "vendor_name": vendor_name,
             "website": url,
             "verified": entity_data.get("confidence") == "high",
             "input_type": InputType.URL.value,
@@ -319,14 +336,20 @@ IMPORTANT:
         try:
             parsed = urlparse(url)
             domain = parsed.netloc or parsed.path
-            product_name = domain.replace('www.', '').split('.')[0].title()
+            simple_name = domain.replace('www.', '').split('.')[0]
+            product_name = simple_name.title()
+            # Normalize for CVE searches
+            original_name = re.sub(r'[^a-z0-9\-_]', '', simple_name.lower())
         except:
             product_name = url
+            simple_name = url
             domain = url
+            original_name = re.sub(r'[^a-z0-9\-_]', '', url.lower())
             
         return {
             "product_name": product_name,
-            "vendor_name": domain,
+            "original_name": original_name,  # Normalized for CVE searches
+            "vendor_name": product_name,  # Use product name as vendor for consistency
             "website": url,
             "verified": False,
             "input_type": InputType.URL.value,
@@ -346,8 +369,12 @@ def _resolve_from_name(name: str) -> Dict[str, Any]:
         
         if not google_api_key:
             # Fallback to basic resolution
+            # Normalize original_name for CVE searches
+            original_name = re.sub(r'[^a-z0-9\-_]', '', name.lower())
+            
             return {
                 "product_name": name,
+                "original_name": original_name,  # Normalized for CVE searches
                 "vendor_name": name,
                 "website": None,
                 "verified": False,
@@ -382,6 +409,12 @@ def _resolve_from_name(name: str) -> Dict[str, Any]:
         
         resolution_prompt = f"""You are a security analyst resolving entity information for a CISO security assessment.
 
+CONTEXT: This is for a SOFTWARE/TECHNOLOGY security assessment. When ambiguous, ALWAYS prioritize:
+1. Software applications, tools, and platforms
+2. Technology products and services
+3. Security-related tools
+Over: consumer products, unrelated businesses, or generic terms
+
 INPUT: "{name}"
 
 SEARCH RESULTS FROM WEB:
@@ -391,9 +424,14 @@ Based on the search results above, determine:
 
 1. Is this a person name, product name, company name, or something else?
 2. If it's a person, what product(s) are they most associated with? (e.g., "Elon Musk" → "X (Twitter)" or "Tesla")
-3. What is the official product name?
+3. What is the official SOFTWARE/TECHNOLOGY product name?
 4. What is the vendor/company name?
 5. What is the official website URL?
+
+DISAMBIGUATION EXAMPLES:
+- "vim" → "Vim (text editor)" by Bram Moolenaar, NOT "Vendor Invoice Management"
+- "slack" → "Slack (communication platform)" by Salesforce, NOT any other "Slack"
+- "python" → "Python (programming language)" by PSF, NOT unrelated products
 
 Return ONLY a JSON object (no markdown, no explanations):
 {{
@@ -406,10 +444,12 @@ Return ONLY a JSON object (no markdown, no explanations):
 }}
 
 CRITICAL RULES:
+- **PRIORITIZE SOFTWARE/TECHNOLOGY products in all ambiguous cases**
 - Use the search results to find accurate information
 - If input is a person name, identify their PRIMARY software product
 - Always try to extract the official website URL from search results
 - Be specific with product names (e.g., "Cursor AI" not just "cursor")
+- For well-known tech tools (vim, emacs, git, etc.), identify them correctly
 - If truly unknown, set product_name to "{name}" and confidence to "low"
 - NEVER return null/None for product_name - always provide a string
 - Return ONLY valid JSON, no markdown formatting
@@ -458,8 +498,12 @@ CRITICAL RULES:
         product_name = entity_data.get("product_name") or name
         vendor_name = entity_data.get("vendor_name") or name
         
+        # Normalize original_name for CVE searches (always lowercase, no special chars)
+        original_name = re.sub(r'[^a-z0-9\-_]', '', name.lower())
+        
         return {
             "product_name": product_name,
+            "original_name": original_name,  # Normalized for CVE/vulnerability searches
             "vendor_name": vendor_name,
             "website": entity_data.get("website"),
             "verified": entity_data.get("confidence") == "high",
@@ -473,8 +517,12 @@ CRITICAL RULES:
         
     except Exception as e:
         # Fallback to basic resolution on any error
+        # Normalize original_name for CVE searches
+        original_name = re.sub(r'[^a-z0-9\-_]', '', name.lower())
+        
         return {
             "product_name": name,
+            "original_name": original_name,  # Normalized for CVE searches
             "vendor_name": name,
             "website": None,
             "verified": False,

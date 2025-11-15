@@ -211,3 +211,6 @@ README_legacy.md
 plan.md
 SECURITY_SOURCES.md
 known_exploited_vulnerabilities.json
+
+# Debug logs
+.logs/
