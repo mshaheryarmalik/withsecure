@@ -9,6 +9,7 @@ import { ShieldLogo } from './components/ShieldLogo';
 import { SystemStatusModal } from './components/SystemStatusModal';
 import { Send, Shield, FileText, Terminal, History, Activity, Brain, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AssessmentRequest, PhaseEvent, ResultEvent, ErrorEvent, CISOBrief } from './types/api';
+import { API_BASE_URL } from './config';
 
 interface Step {
   id: string;
@@ -61,8 +62,8 @@ export default function App() {
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
   const [assessmentData, setAssessmentData] = useState<CISOBrief | null>(null);
   
-  // API URL from environment or default
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  // API URL - use the centralized config
+  const API_URL = API_BASE_URL;
 
   // Set document title
   useEffect(() => {
