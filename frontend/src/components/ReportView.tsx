@@ -1,41 +1,33 @@
 import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import type { CISOBrief } from '../types/api';
+import { calculateSecurityDimensions, calculateVulnerabilityDistribution } from '../utils/chartCalculations';
 
 interface ReportViewProps {
   query: string;
+  assessment: CISOBrief;
   onClose: () => void;
 }
 
-export function ReportView({ query, onClose }: ReportViewProps) {
-  // Mock data for visualizations
-  const vulnerabilityData = [
-    { name: 'Critical', count: 3, color: '#EF4444' },
-    { name: 'High', count: 8, color: '#F59E0B' },
-    { name: 'Medium', count: 9, color: '#06B6D4' },
-    { name: 'Low', count: 3, color: '#10B981' }
-  ];
-
+export function ReportView({ query, assessment, onClose }: ReportViewProps) {
+  // Calculate real data from assessment
+  const vulnerabilityData = calculateVulnerabilityDistribution(assessment);
+  const securityDimensions = calculateSecurityDimensions(assessment);
+  
+  // Convert to chart format
   const securityScoreData = [
-    { category: 'Vulnerability Management', score: 65 },
-    { category: 'Patch Response', score: 72 },
-    { category: 'Compliance', score: 78 },
-    { category: 'Vendor Trust', score: 80 },
-    { category: 'Community Support', score: 85 },
-    { category: 'Documentation', score: 90 }
+    { category: 'Vendor Trust', score: securityDimensions.vendorTrust },
+    { category: 'Compliance', score: securityDimensions.compliance },
+    { category: 'CVE Response', score: securityDimensions.cveResponse },
+    { category: 'Incidents', score: securityDimensions.incidents },
+    { category: 'Data Handling', score: securityDimensions.dataHandling },
   ];
 
-  const trendData = [
-    { month: 'Jan', vulnerabilities: 15, patches: 12 },
-    { month: 'Feb', vulnerabilities: 18, patches: 16 },
-    { month: 'Mar', vulnerabilities: 23, patches: 20 },
-    { month: 'Apr', vulnerabilities: 20, patches: 22 },
-    { month: 'May', vulnerabilities: 17, patches: 18 },
-    { month: 'Jun', vulnerabilities: 23, patches: 19 }
-  ];
-
+  // Compliance data calculated from assessment
+  const complianceScore = securityDimensions.compliance;
   const complianceData = [
-    { name: 'Met', value: 78, color: '#10B981' },
-    { name: 'Gap', value: 22, color: '#EF4444' }
+    { name: 'Met', value: complianceScore, color: '#10B981' },
+    { name: 'Gap', value: 100 - complianceScore, color: '#EF4444' }
   ];
 
   const handleDownload = () => {
@@ -131,28 +123,30 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-3 md:p-4 hover:border-cyan-500/40 transition-all">
                 <div className="text-xs md:text-sm text-cyan-400 mb-1">Trust Score</div>
-                <div className="text-3xl md:text-4xl text-cyan-300 mb-2">67</div>
-                <div className="text-xs text-slate-400 font-[Inter]">Moderate Risk</div>
+                <div className="text-3xl md:text-4xl text-cyan-300 mb-2">{assessment.trust_score}</div>
+                <div className="text-xs text-slate-400 font-[Inter]">
+                  {assessment.trust_score >= 70 ? 'Low Risk' : assessment.trust_score >= 40 ? 'Moderate Risk' : 'High Risk'}
+                </div>
               </div>
               <div className="bg-gradient-to-br from-red-900/30 to-red-800/30 backdrop-blur-sm border border-red-500/20 rounded-lg p-3 md:p-4 hover:border-red-500/40 transition-all">
-                <div className="text-xs md:text-sm text-red-400 mb-1">Critical CVEs</div>
-                <div className="text-3xl md:text-4xl text-red-300 mb-2">3</div>
+                <div className="text-xs md:text-sm text-red-400 mb-1">Risk Score</div>
+                <div className="text-3xl md:text-4xl text-red-300 mb-2">{assessment.risk_score}</div>
                 <div className="flex items-center gap-1 text-xs text-red-400">
                   <AlertTriangle className="w-3 h-3" />
-                  <span>Immediate Action</span>
+                  <span>{assessment.risk_score >= 70 ? 'High Risk' : assessment.risk_score >= 40 ? 'Moderate Risk' : 'Low Risk'}</span>
                 </div>
               </div>
               <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/30 backdrop-blur-sm border border-amber-500/20 rounded-lg p-3 md:p-4 hover:border-amber-500/40 transition-all">
-                <div className="text-xs md:text-sm text-amber-400 mb-1">Compliance</div>
-                <div className="text-3xl md:text-4xl text-amber-300 mb-2">78%</div>
-                <div className="text-xs text-slate-400">SOC 2 Coverage</div>
+                <div className="text-xs md:text-sm text-amber-400 mb-1">Critical CVEs</div>
+                <div className="text-3xl md:text-4xl text-amber-300 mb-2">{assessment.cve_summary.critical_count}</div>
+                <div className="text-xs text-slate-400">CISA KEV: {assessment.cve_summary.cisa_kev_count}</div>
               </div>
               <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 backdrop-blur-sm border border-green-500/20 rounded-lg p-3 md:p-4 hover:border-green-500/40 transition-all">
-                <div className="text-xs md:text-sm text-green-400 mb-1">Patch Response</div>
-                <div className="text-3xl md:text-4xl text-green-300 mb-2">14d</div>
+                <div className="text-xs md:text-sm text-green-400 mb-1">Confidence</div>
+                <div className="text-3xl md:text-4xl text-green-300 mb-2 capitalize">{assessment.confidence}</div>
                 <div className="flex items-center gap-1 text-xs text-green-400">
                   <CheckCircle className="w-3 h-3" />
-                  <span>Active Support</span>
+                  <span>{assessment.cve_summary.total_cves} Total CVEs</span>
                 </div>
               </div>
             </div>
@@ -181,7 +175,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
                   />
                   <Bar dataKey="count" radius={[8, 8, 0, 0]}>
                     {vulnerabilityData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -212,32 +206,21 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               </ResponsiveContainer>
             </div>
 
-            {/* Vulnerability Trend */}
+            {/* Entity Information */}
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
               <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
-                6-Month Vulnerability Trend
+                Entity Information
               </h4>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="month" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1e293b', 
-                      border: '1px solid #334155',
-                      borderRadius: '8px',
-                      color: '#e2e8f0'
-                    }}
-                  />
-                  <Legend 
-                    wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }}
-                  />
-                  <Line type="monotone" dataKey="vulnerabilities" stroke="#EF4444" strokeWidth={2} name="Vulnerabilities" />
-                  <Line type="monotone" dataKey="patches" stroke="#10B981" strokeWidth={2} name="Patches Released" />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="space-y-2 text-xs text-slate-300">
+                <div><strong className="text-cyan-400">Product:</strong> {assessment.entity.product_name}</div>
+                <div><strong className="text-cyan-400">Vendor:</strong> {assessment.entity.vendor_name}</div>
+                {assessment.entity.website && <div><strong className="text-cyan-400">Website:</strong> <a href={assessment.entity.website} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">{assessment.entity.website}</a></div>}
+                <div><strong className="text-cyan-400">Category:</strong> {assessment.taxonomy.primary_category}</div>
+                {assessment.taxonomy.secondary_categories.length > 0 && (
+                  <div><strong className="text-cyan-400">Secondary:</strong> {assessment.taxonomy.secondary_categories.join(', ')}</div>
+                )}
+              </div>
             </div>
 
             {/* Compliance Pie */}
@@ -282,63 +265,316 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               Key Findings
             </h3>
             <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 md:p-4 bg-red-950/30 backdrop-blur-sm border-l-4 border-red-500 rounded-lg hover:bg-red-950/50 transition-all">
-                <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs md:text-sm text-red-300">Critical: CVE-2021-44228 (Log4Shell)</div>
-                  <div className="text-xs text-slate-400 mt-1">CVSS 10.0 - Remote Code Execution vulnerability. Immediate patching required.</div>
+              {assessment.cve_summary.recent_cves.slice(0, 3).map((cve, idx) => (
+                <div key={idx} className="flex items-start gap-3 p-3 md:p-4 bg-red-950/30 backdrop-blur-sm border-l-4 border-red-500 rounded-lg hover:bg-red-950/50 transition-all">
+                  <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs md:text-sm text-red-300">
+                      {cve.severity}: {cve.cve_id} {cve.in_cisa_kev && '(CISA KEV)'}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {cve.description || 'No description available'}
+                      {cve.cvss_score && ` (CVSS: ${cve.cvss_score})`}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 md:p-4 bg-amber-950/30 backdrop-blur-sm border-l-4 border-amber-500 rounded-lg hover:bg-amber-950/50 transition-all">
-                <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs md:text-sm text-amber-300">Compliance Gaps Identified</div>
-                  <div className="text-xs text-slate-400 mt-1">Missing controls in incident response and vendor management areas.</div>
+              ))}
+              {assessment.incidents.breach_count > 0 && (
+                <div className="flex items-start gap-3 p-3 md:p-4 bg-amber-950/30 backdrop-blur-sm border-l-4 border-amber-500 rounded-lg hover:bg-amber-950/50 transition-all">
+                  <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs md:text-sm text-amber-300">Security Incidents Detected</div>
+                    <div className="text-xs text-slate-400 mt-1">{assessment.incidents.breach_count} breach(es) found in security databases.</div>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 md:p-4 bg-green-950/30 backdrop-blur-sm border-l-4 border-green-500 rounded-lg hover:bg-green-950/50 transition-all">
-                <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs md:text-sm text-green-300">Active Vendor Support</div>
-                  <div className="text-xs text-slate-400 mt-1">Average patch response time of 14 days. Regular security updates maintained.</div>
+              )}
+              {assessment.vendor_reputation.security_page_found && (
+                <div className="flex items-start gap-3 p-3 md:p-4 bg-green-950/30 backdrop-blur-sm border-l-4 border-green-500 rounded-lg hover:bg-green-950/50 transition-all">
+                  <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-xs md:text-sm text-green-300">Vendor Security Transparency</div>
+                    <div className="text-xs text-slate-400 mt-1">Security page found. {assessment.vendor_reputation.security_advisories_found} advisory/advisories published.</div>
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Product Overview */}
+          <div className="mb-6">
+            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
+              Product Overview
+            </h3>
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 md:p-6">
+              <div className="space-y-3 text-xs md:text-sm text-slate-300">
+                <div>
+                  <strong className="text-cyan-400">Category:</strong> {assessment.taxonomy.primary_category}
+                </div>
+                <div>
+                  <strong className="text-cyan-400">Description:</strong> {assessment.description}
+                </div>
+                <div>
+                  <strong className="text-cyan-400">Usage:</strong> {assessment.usage}
+                </div>
+                {assessment.taxonomy.secondary_categories.length > 0 && (
+                  <div>
+                    <strong className="text-cyan-400">Secondary Categories:</strong> {assessment.taxonomy.secondary_categories.join(', ')}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
+          {/* Security Posture Details */}
+          <div className="mb-6">
+            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
+              Security Posture
+            </h3>
+            <div className="space-y-4">
+              {/* CVE Summary */}
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <h4 className="text-sm text-cyan-400 mb-3">CVE Summary ({assessment.cve_summary.source_label})</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <div className="text-slate-400">Total CVEs</div>
+                    <div className="text-slate-200 font-semibold">{assessment.cve_summary.total_cves}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Critical</div>
+                    <div className="text-red-300 font-semibold">{assessment.cve_summary.critical_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">High</div>
+                    <div className="text-orange-300 font-semibold">{assessment.cve_summary.high_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Medium</div>
+                    <div className="text-yellow-300 font-semibold">{assessment.cve_summary.medium_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Low</div>
+                    <div className="text-green-300 font-semibold">{assessment.cve_summary.low_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">CISA KEV</div>
+                    <div className="text-red-300 font-semibold">{assessment.cve_summary.cisa_kev_count}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-slate-400">Trend</div>
+                    <div className="text-slate-200 font-semibold capitalize">{assessment.cve_summary.trend}</div>
+                  </div>
+                </div>
+                {assessment.cve_summary.citation && (
+                  <div className="mt-3 text-xs text-slate-500 italic">{assessment.cve_summary.citation}</div>
+                )}
+              </div>
+
+              {/* Incidents */}
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <h4 className="text-sm text-cyan-400 mb-3">Incidents ({assessment.incidents.source_label})</h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="text-slate-400">Data Breaches</div>
+                    <div className="text-slate-200 font-semibold">{assessment.incidents.breach_count}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Total Incidents</div>
+                    <div className="text-slate-200 font-semibold">{assessment.incidents.incidents.length}</div>
+                  </div>
+                </div>
+                {assessment.incidents.incidents.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {assessment.incidents.incidents.map((incident, idx) => (
+                      <div key={idx} className="text-xs text-slate-300 border-l-2 border-amber-500/50 pl-2">
+                        <div className="font-semibold">{incident.incident_type} - {incident.severity}</div>
+                        {incident.incident_date && <div className="text-slate-400">{incident.incident_date}</div>}
+                        <div className="text-slate-400 mt-1">{incident.description}</div>
+                        {incident.source_url && (
+                          <a href={incident.source_url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline text-[10px]">
+                            Source
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Compliance */}
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <h4 className="text-sm text-cyan-400 mb-3">Compliance</h4>
+                <div className="space-y-2 text-xs text-slate-300">
+                  <div>
+                    <strong className="text-cyan-400">SOC2:</strong> {assessment.compliance.soc2_status}
+                  </div>
+                  <div>
+                    <strong className="text-cyan-400">GDPR:</strong> {assessment.compliance.gdpr_compliant ? 'Yes' : 'No'}
+                  </div>
+                  {assessment.compliance.ccpa_compliant !== undefined && (
+                    <div>
+                      <strong className="text-cyan-400">CCPA:</strong> {assessment.compliance.ccpa_compliant ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                  {assessment.compliance.hipaa_compliant !== undefined && (
+                    <div>
+                      <strong className="text-cyan-400">HIPAA:</strong> {assessment.compliance.hipaa_compliant ? 'Yes' : 'No'}
+                    </div>
+                  )}
+                  {assessment.compliance.iso_certifications.length > 0 && (
+                    <div className="mt-2">
+                      <strong className="text-cyan-400">ISO Certifications:</strong>
+                      <ul className="mt-1 space-y-1 ml-4">
+                        {assessment.compliance.iso_certifications.map((iso, idx) => (
+                          <li key={idx} className="text-slate-400">
+                            {iso.certification_type} - {iso.status}
+                            {iso.date_issued && ` (Issued: ${iso.date_issued})`}
+                            {iso.expiry_date && ` (Expires: ${iso.expiry_date})`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Data Handling */}
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <h4 className="text-sm text-cyan-400 mb-3">Data Handling ({assessment.data_handling.source_label})</h4>
+                <div className="space-y-2 text-xs text-slate-300">
+                  <div>
+                    <strong className="text-cyan-400">Encryption:</strong> {assessment.data_handling.encryption_claimed ? 'Stated' : 'Not stated'}
+                    {assessment.data_handling.encryption_details && (
+                      <div className="text-slate-400 ml-4 mt-1">{assessment.data_handling.encryption_details}</div>
+                    )}
+                  </div>
+                  {assessment.data_handling.data_retention && (
+                    <div>
+                      <strong className="text-cyan-400">Data Retention:</strong> {assessment.data_handling.data_retention}
+                    </div>
+                  )}
+                  {assessment.data_handling.third_party_sharing && (
+                    <div>
+                      <strong className="text-cyan-400">Third-party Sharing:</strong> {assessment.data_handling.third_party_sharing}
+                    </div>
+                  )}
+                  {assessment.data_handling.data_location && (
+                    <div>
+                      <strong className="text-cyan-400">Data Location:</strong> {assessment.data_handling.data_location}
+                    </div>
+                  )}
+                  <div className="mt-3 space-y-1">
+                    {assessment.data_handling.tos_url && (
+                      <div>
+                        <strong className="text-cyan-400">Terms of Service:</strong>{' '}
+                        <a href={assessment.data_handling.tos_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
+                          {assessment.data_handling.tos_url}
+                        </a>
+                      </div>
+                    )}
+                    {assessment.data_handling.privacy_policy_url && (
+                      <div>
+                        <strong className="text-cyan-400">Privacy Policy:</strong>{' '}
+                        <a href={assessment.data_handling.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
+                          {assessment.data_handling.privacy_policy_url}
+                        </a>
+                      </div>
+                    )}
+                    {assessment.data_handling.dpa_url && (
+                      <div>
+                        <strong className="text-cyan-400">Data Processing Agreement:</strong>{' '}
+                        <a href={assessment.data_handling.dpa_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
+                          {assessment.data_handling.dpa_url}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Deployment Controls */}
+              {assessment.deployment_controls && (
+                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                  <h4 className="text-sm text-cyan-400 mb-3">Deployment Controls</h4>
+                  <div className="text-xs text-slate-300 whitespace-pre-wrap">{assessment.deployment_controls}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Recommendations */}
-          <div>
+          <div className="mb-6">
             <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Recommendations
             </h3>
             <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-4 md:p-6">
-              <ol className="space-y-3 text-xs md:text-sm text-slate-300">
-                <li className="flex items-start gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">1</span>
-                  <span><strong className="text-cyan-400">Immediate:</strong> Upgrade to version 2.17.1 or later to address critical vulnerabilities (CVE-2021-44228, CVE-2021-45046)</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">2</span>
-                  <span><strong className="text-cyan-400">Short-term:</strong> Implement additional monitoring and detection rules for exploitation attempts</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">3</span>
-                  <span><strong className="text-cyan-400">Medium-term:</strong> Review and address compliance gaps in incident response procedures</span>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">4</span>
-                  <span><strong className="text-cyan-400">Consider alternatives:</strong> Evaluate Logback or SLF4J Simple as potential replacements with better security profiles</span>
-                </li>
-              </ol>
+              <div className="text-xs md:text-sm text-slate-300 mb-4 whitespace-pre-wrap">{assessment.rationale}</div>
+              {assessment.safer_alternatives.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm text-cyan-400 mb-2">Safer Alternatives:</h4>
+                  <ul className="space-y-2">
+                    {assessment.safer_alternatives.map((alt, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-xs md:text-sm">
+                        <span className="text-cyan-300">•</span>
+                        <span><strong className="text-cyan-300">{alt.product_name}</strong> by {alt.vendor_name} - {alt.rationale}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Citations */}
+          {assessment.all_citations && assessment.all_citations.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+                <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
+                Citations
+              </h3>
+              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <div className="space-y-2">
+                  {assessment.all_citations.map((citation, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs border-l-2 border-slate-600/50 pl-3 py-1">
+                      <span className="text-slate-500 font-mono flex-shrink-0">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            citation.source_label === 'independent' ? 'bg-green-900/50 text-green-300' :
+                            citation.source_label === 'vendor-stated' ? 'bg-blue-900/50 text-blue-300' :
+                            'bg-purple-900/50 text-purple-300'
+                          }`}>
+                            {citation.source_label === 'vendor-stated' ? 'VENDOR' : citation.source_label.toUpperCase()}
+                          </span>
+                          <span className="text-slate-400">[{citation.source_type}]</span>
+                        </div>
+                        <div className="mt-1 text-slate-300">{citation.claim}</div>
+                        <a 
+                          href={citation.source_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-cyan-400 hover:text-cyan-300 hover:underline break-all text-[10px] mt-1 inline-block"
+                        >
+                          {citation.source_url}
+                        </a>
+                        {citation.accessed_date && (
+                          <div className="text-slate-500 text-[10px] mt-1">Accessed: {citation.accessed_date}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="border-t border-cyan-500/20 px-4 md:px-6 py-3 bg-slate-900/50 backdrop-blur-sm text-xs text-slate-400">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Generated on {new Date().toLocaleString()}</span>
+            <span>Generated on {new Date(assessment.assessment_timestamp).toLocaleString()}</span>
             <span className="text-cyan-400">CISO Security Assessor v1.0</span>
           </div>
         </div>

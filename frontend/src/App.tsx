@@ -7,7 +7,8 @@ import { CliTerminal } from './components/CliTerminal';
 import { PastAnalysis } from './components/PastAnalysis';
 import { ShieldLogo } from './components/ShieldLogo';
 import { SystemStatusModal } from './components/SystemStatusModal';
-import { Send, Shield, FileText, Terminal, History, Activity, Brain, CheckCircle2 } from 'lucide-react';
+import { Send, Shield, FileText, Terminal, History, Activity, Brain, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import type { AssessmentRequest, PhaseEvent, ResultEvent, ErrorEvent, CISOBrief } from './types/api';
 
 interface Step {
   id: string;
@@ -39,10 +40,16 @@ interface LogEntry {
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
-  const [input, setInput] = useState('');
+  const [product, setProduct] = useState('');
+  const [vendor, setVendor] = useState('');
+  const [sha1, setSha1] = useState('');
+  const [url, setUrl] = useState('');
+  const [version, setVersion] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const logIdCounter = useRef(0);
+  const currentPhaseRef = useRef<string>('');
 
   const [showReport, setShowReport] = useState(false);
   const [reportReady, setReportReady] = useState(false);
@@ -52,6 +59,10 @@ export default function App() {
   const [cliTerminalOpen, setCliTerminalOpen] = useState(false);
   const [pastAnalysisOpen, setPastAnalysisOpen] = useState(false);
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
+  const [assessmentData, setAssessmentData] = useState<CISOBrief | null>(null);
+  
+  // API URL from environment or default
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   // Set document title
   useEffect(() => {
@@ -65,23 +76,44 @@ export default function App() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!product.trim() && !sha1.trim() && !url.trim()) {
+      // At least one of product, sha1, or url must be provided
+      return;
+    }
 
-    const query = input;
-    setInput('');
+    // Build query string for display
+    const query = product.trim() || sha1.trim() || url.trim() || vendor.trim();
     setCurrentQuery(query);
     setShowReport(false);
     setReportReady(false);
     setIsProcessing(true);
+    setAssessmentData(null);
 
-    simulateProcessing(query);
+    // Build request payload with all provided fields
+    const request: AssessmentRequest = {
+      product: product.trim() || undefined,
+      vendor: vendor.trim() || undefined,
+      sha1: sha1.trim() || undefined,
+      url: url.trim() || undefined,
+      version: version.trim() || undefined,
+    };
+
+    // Clear form after submission (optional - you can keep values if preferred)
+    // setProduct('');
+    // setVendor('');
+    // setSha1('');
+    // setUrl('');
+    // setVersion('');
+
+    processWithBackend(request);
   };
 
-  const simulateProcessing = (query: string) => {
+  const processWithBackend = async (request: AssessmentRequest) => {
     // Clear previous state
     setPhases([]);
     setLogs([]);
     setIsProcessing(true);
+    setAssessmentData(null);
 
     // Initialize all 4 phases with pending status
     const initialPhases: Phase[] = [
@@ -144,141 +176,188 @@ export default function App() {
 
     setPhases(initialPhases);
 
-    // Phase 1: Entity Resolution
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => p.id === 'phase_1' ? { ...p, status: 'active' as const, progress: 10 } : p));
-      addLog('phase_1', 'Entity Resolution', 'Starting entity resolution...');
-    }, 500);
+    try {
+      // Connect to SSE endpoint
+      const response = await fetch(`${API_URL}/assess/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
 
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_1' ? { ...p, progress: 25, steps: p.steps.map((s, i) => i === 0 ? { ...s, status: 'active' as const, duration: 234 } : s) } : p
-      ));
-      addLog('phase_1', 'Entity Resolution', 'Analyzing input type...');
-    }, 1000);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_1' ? { ...p, progress: 50, steps: p.steps.map((s, i) => i === 0 ? { ...s, status: 'completed' as const } : i === 1 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_1', 'Entity Resolution', 'Searching security databases...');
-    }, 1500);
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
 
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_1' ? { ...p, progress: 75, steps: p.steps.map((s, i) => i <= 1 ? { ...s, status: 'completed' as const, duration: 456 } : i === 2 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_1', 'Entity Resolution', 'Resolving product details...');
-    }, 2000);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let currentEventType = '';
 
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_1' ? { ...p, progress: 100, status: 'completed' as const, steps: p.steps.map(s => ({ ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 500) + 200 })) } : p
-      ));
-      addLog('phase_1', 'Entity Resolution', 'Entity resolved successfully');
-    }, 2500);
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
 
-    // Phase 2: Software Classification
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => p.id === 'phase_2' ? { ...p, status: 'active' as const, progress: 15 } : p));
-      addLog('phase_2', 'Software Classification', 'Starting software classification...');
-    }, 3000);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_2' ? { ...p, progress: 50, steps: p.steps.map((s, i) => i === 0 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_2', 'Software Classification', 'Analyzing product characteristics...');
-    }, 3500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_2' ? { ...p, progress: 100, status: 'completed' as const, steps: p.steps.map(s => ({ ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 400) + 150 })) } : p
-      ));
-      addLog('phase_2', 'Software Classification', 'Classification complete');
-    }, 4500);
-
-    // Phase 3: Security Data Gathering
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => p.id === 'phase_3' ? { ...p, status: 'active' as const, progress: 10 } : p));
-      addLog('phase_3', 'Security Data Gathering', 'Collecting security intelligence...');
-    }, 5000);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_3' ? { ...p, progress: 30, steps: p.steps.map((s, i) => i === 1 ? { ...s, status: 'active' as const } : i === 0 ? { ...s, status: 'skipped' as const } : s) } : p
-      ));
-      addLog('phase_3', 'Security Data Gathering', 'Scanning vulnerability databases...');
-    }, 5500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_3' ? { ...p, progress: 50, steps: p.steps.map((s, i) => i <= 1 ? (i === 0 ? { ...s, status: 'skipped' as const } : { ...s, status: 'completed' as const, duration: 890 }) : i === 2 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_3', 'Security Data Gathering', 'Analyzing vendor compliance...');
-    }, 6500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_3' ? { 
-          ...p, 
-          progress: 80,
-          steps: p.steps.map((s, i) => {
-            if (i === 0) return { ...s, status: 'skipped' as const };
-            if (i <= 4) return { ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 600) + 300 };
-            if (i === 5) return { ...s, status: 'active' as const };
-            return s;
-          }) 
-        } : p
-      ));
-      addLog('phase_3', 'Security Data Gathering', 'Collecting company information...');
-    }, 7500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_3' ? { ...p, progress: 100, status: 'completed' as const, steps: p.steps.map((s, i) => i === 0 ? { ...s, status: 'skipped' as const } : { ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 700) + 250 }) } : p
-      ));
-      addLog('phase_3', 'Security Data Gathering', 'Data collection complete');
-    }, 8500);
-
-    // Phase 4: AI Analysis
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => p.id === 'phase_4' ? { ...p, status: 'active' as const, progress: 20 } : p));
-      addLog('phase_4', 'AI Analysis & Brief Generation', 'Starting AI analysis...');
-    }, 9000);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_4' ? { ...p, progress: 40, steps: p.steps.map((s, i) => i === 0 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_4', 'AI Analysis & Brief Generation', 'Analyzing security posture...');
-    }, 9500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_4' ? { ...p, progress: 70, steps: p.steps.map((s, i) => i <= 2 ? { ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 800) + 400 } : i === 3 ? { ...s, status: 'active' as const } : s) } : p
-      ));
-      addLog('phase_4', 'AI Analysis & Brief Generation', 'Compiling source citations...');
-    }, 10500);
-
-    setTimeout(() => {
-      setPhases(prev => prev.map(p => 
-        p.id === 'phase_4' ? { ...p, progress: 100, status: 'completed' as const, steps: p.steps.map(s => ({ ...s, status: 'completed' as const, duration: Math.floor(Math.random() * 900) + 500 })) } : p
-      ));
-      addLog('phase_4', 'AI Analysis & Brief Generation', 'CISO brief generated successfully');
-      setReportReady(true);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          
+          if (line.startsWith('event:')) {
+            currentEventType = line.substring(6).trim();
+          } else if (line.startsWith('data:')) {
+            const dataStr = line.substring(5).trim();
+            
+            if (dataStr) {
+              try {
+                const data = JSON.parse(dataStr);
+                
+                if (currentEventType === 'phase') {
+                  handlePhaseEvent(data as PhaseEvent);
+                } else if (currentEventType === 'result') {
+                  handleResultEvent(data as ResultEvent);
+                } else if (currentEventType === 'error') {
+                  handleErrorEvent(data as ErrorEvent);
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE data:', e, dataStr);
+              }
+            }
+          } else if (line === '') {
+            // Empty line indicates end of event
+            currentEventType = '';
+          }
+        }
+      }
+    } catch (error) {
+      console.error('SSE connection error:', error);
+      addLog('system', 'System', `Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Mark all phases as error
+      setPhases(prev => prev.map(p => ({ ...p, status: 'error' as const })));
       setIsProcessing(false);
-    }, 12000);
+    }
   };
 
-  const addLog = (phaseId: string, phaseName: string, message: string) => {
+  const handlePhaseEvent = (event: PhaseEvent & { message?: string }) => {
+    const { phase, phase_name, step, messages } = event;
+    
+    // Map backend phase to our phase ID
+    let phaseId = phase;
+    if (phase === 'init' || phase === 'cache') {
+      // Initial phase - activate phase_1
+      phaseId = 'phase_1';
+      setPhases(prev => prev.map(p => p.id === phaseId ? { ...p, status: 'active' as const } : p));
+      if (event.message) {
+        addLog(phaseId, phase_name || 'Initialization', event.message);
+      }
+      return;
+    }
+
+    // Update phase status
+    setPhases(prev => prev.map(p => {
+      if (p.id === phaseId) {
+        // Mark this phase as active
+        const updatedPhase = { ...p, status: 'active' as const };
+        
+        // Update progress based on step
+        if (step) {
+          // Try to match step to a step in the phase
+          const stepIndex = updatedPhase.steps.findIndex(s => 
+            s.message.toLowerCase().includes(step.toLowerCase()) ||
+            s.detail.toLowerCase().includes(step.toLowerCase())
+          );
+          
+          if (stepIndex >= 0) {
+            // Mark previous steps as completed, current as active
+            updatedPhase.steps = updatedPhase.steps.map((s, i) => {
+              if (i < stepIndex) return { ...s, status: 'completed' as const };
+              if (i === stepIndex) return { ...s, status: 'active' as const };
+              return s;
+            });
+          }
+          
+          // Calculate progress (rough estimate)
+          const activeStepIndex = updatedPhase.steps.findIndex(s => s.status === 'active');
+          if (activeStepIndex >= 0) {
+            updatedPhase.progress = Math.min(100, ((activeStepIndex + 1) / updatedPhase.steps.length) * 100);
+          }
+        }
+        
+        return updatedPhase;
+      } else if (currentPhaseRef.current && p.id === currentPhaseRef.current) {
+        // Mark previous phase as completed when new phase starts
+        return { ...p, status: 'completed' as const, progress: 100 };
+      }
+      return p;
+    }));
+
+    // Update current phase
+    if (phaseId !== currentPhaseRef.current) {
+      currentPhaseRef.current = phaseId;
+    }
+
+    // Add messages to logs
+    if (messages && messages.length > 0) {
+      messages.forEach(msg => {
+        addLog(phaseId, phase_name, msg);
+      });
+    } else if (step) {
+      addLog(phaseId, phase_name, step);
+    }
+  };
+
+  const handleResultEvent = (event: ResultEvent) => {
+    if (event.success && event.assessment) {
+      setAssessmentData(event.assessment);
+      
+      // Mark all phases as completed
+      setPhases(prev => prev.map(p => ({
+        ...p,
+        status: 'completed' as const,
+        progress: 100,
+        steps: p.steps.map(s => ({ ...s, status: 'completed' as const }))
+      })));
+      
+      addLog('system', 'System', 'Assessment completed successfully');
+      setReportReady(true);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleErrorEvent = (event: ErrorEvent) => {
+    const errorMsg = event.error || (event.errors && event.errors.join('; ')) || 'Unknown error';
+    addLog('system', 'System', `Error: ${errorMsg}`, 'error');
+    
+    // Mark current phase as error
+    setPhases(prev => prev.map(p => {
+      if (p.status === 'active') {
+        return { ...p, status: 'error' as const };
+      }
+      return p;
+    }));
+    
+    setIsProcessing(false);
+  };
+
+  const addLog = (phaseId: string, phaseName: string, message: string, status: 'active' | 'completed' | 'error' | 'info' = 'info') => {
     setLogs(prev => [...prev, {
       id: `log-${++logIdCounter.current}`,
       timestamp: getTimestamp(),
       nodeId: phaseId,
       nodeLabel: phaseName,
       message: message,
-      status: 'info'
+      status: status
     }]);
   };
 
@@ -381,36 +460,88 @@ export default function App() {
         {/* Input Section with Logo */}
         <div className="border-b border-slate-800 bg-black shadow-lg shadow-slate-900/50">
           <form onSubmit={handleSubmit} className="flex flex-col">
-            {/* Full Width Search Bar */}
+            {/* Main Input Row */}
             <div className="w-full flex items-center gap-2 md:gap-4 px-2 md:px-6 py-2.5">
               <div className="flex items-center flex-shrink-0">
                 <ShieldLogo className="w-8 h-8 md:w-12 md:h-12" />
               </div>
               
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Enter product name or vendor to assess (e.g., 'Apache Log4j 2.14' or 'Okta')"
-                  className={`w-full px-3 md:px-4 py-2 pr-10 md:pr-12 bg-gradient-to-r from-slate-900 to-slate-800 border text-slate-200 placeholder-slate-500 rounded-full focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-base transition-all ${
-                    !input.trim() 
-                      ? 'border-slate-600 shadow-[0_0_15px_rgba(148,163,184,0.3)] animate-pulse-glow' 
-                      : 'border-slate-700'
-                  }`}
-                  style={{ fontFamily: "'Inter', sans-serif" }}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-200 disabled:text-slate-700 disabled:cursor-not-allowed transition-all"
-                >
-                  <Brain className="w-4 h-4 md:w-5 md:h-5" />
-                </button>
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                {/* Product Name - Required */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={product}
+                    onChange={(e) => setProduct(e.target.value)}
+                    placeholder="Product name *"
+                    className={`w-full px-3 md:px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800 border text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all ${
+                      !product.trim() && !sha1.trim() && !url.trim()
+                        ? 'border-slate-600 shadow-[0_0_15px_rgba(148,163,184,0.3)] animate-pulse-glow' 
+                        : 'border-slate-700'
+                    }`}
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  />
+                </div>
+                
+                {/* Vendor Name - Optional */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={vendor}
+                    onChange={(e) => setVendor(e.target.value)}
+                    placeholder="Vendor name (optional)"
+                    className="w-full px-3 md:px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  />
+                </div>
+                
+                {/* SHA1 - Optional */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={sha1}
+                    onChange={(e) => setSha1(e.target.value)}
+                    placeholder="SHA1 hash (optional)"
+                    className="w-full px-3 md:px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all font-mono"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  />
+                </div>
+                
+                {/* URL - Optional */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="URL (optional)"
+                    className="w-full px-3 md:px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  />
+                </div>
               </div>
               
-              {/* Status Indicator - Compact with just blips/icons */}
+              {/* Submit Button and Status */}
               <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="submit"
+                  disabled={!product.trim() && !sha1.trim() && !url.trim()}
+                  className="p-2 text-slate-400 hover:text-slate-200 disabled:text-slate-700 disabled:cursor-not-allowed transition-all bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700 disabled:border-slate-800"
+                  title="Start Assessment"
+                >
+                  <Brain className="w-5 h-5 md:w-6 md:h-6" />
+                </button>
+                
+                {/* Advanced Options Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="p-2 text-slate-400 hover:text-slate-200 transition-all bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700"
+                  title="Advanced Options"
+                >
+                  {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                
+                {/* Status Indicator */}
                 {isProcessing && (
                   <div className="flex items-center gap-1.5 animate-fadeIn">
                     <div className="relative">
@@ -434,6 +565,23 @@ export default function App() {
                 )}
               </div>
             </div>
+            
+            {/* Advanced Options (Version) */}
+            {showAdvanced && (
+              <div className="px-2 md:px-6 pb-2.5 border-t border-slate-800 pt-2.5">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 whitespace-nowrap">Version:</label>
+                  <input
+                    type="text"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    placeholder="Product version (optional)"
+                    className="flex-1 max-w-xs px-3 py-1.5 bg-gradient-to-r from-slate-900 to-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs transition-all"
+                    style={{ fontFamily: "'Inter', sans-serif" }}
+                  />
+                </div>
+              </div>
+            )}
           </form>
         </div>
 
@@ -506,9 +654,10 @@ export default function App() {
           onClose={() => setActivityLogOpen(false)}
         />
 
-        {showReport && (
+        {showReport && assessmentData && (
           <ReportView
             query={currentQuery}
+            assessment={assessmentData}
             onClose={() => setShowReport(false)}
           />
         )}

@@ -26,8 +26,8 @@ class AssessmentCache:
             self.cache_dir = backend_dir / ".cache" / "assessments"
         else:
             self.cache_dir = Path(cache_dir)
-        self.ttl_hours = ttl_hours
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+            self.ttl_hours = ttl_hours
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_cache_key(self, input_text: str) -> str:
         """Generate cache key from input text."""
