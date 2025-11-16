@@ -272,3 +272,24 @@ Requirements:
 
 Output as structured CISOBrief."""
 
+ALTERNATIVE_EXTRACTION_PROMPT = """Extract the actual alternative product/software names mentioned in these search results.
+
+Search results about alternatives to "{product_name}":
+{summaries_text}
+
+Return ONLY a JSON array of the top 1 to 2 alternative products mentioned, with this format:
+[
+  {{"product_name": "Product Name", "vendor_name": "Vendor Name", "reason": "brief reason why it's an alternative"}},
+  ...
+]
+
+IMPORTANT:
+- Extract ACTUAL product names (e.g., "Microsoft Teams", "Slack", "Google Workspace")
+- Do NOT include generic terms like "alternatives", "competitors", "best tools"
+- Only include products that are clearly mentioned as alternatives
+- Limit to top 1 to 2 most relevant alternatives
+- If no vendor names are found, dont return them.
+- If no product names are found, dont return the product name
+- If no reason is found, dont return the reason
+- Return ONLY the JSON array, no other text"""
+

@@ -44,23 +44,23 @@ class Configuration(BaseModel):
     
     # Model Configuration
     classification_model: str = Field(
-        default="gemini-2.0-flash-exp",
+        default="gemini-2.5-flash",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "gemini-2.0-flash-exp",
-                "description": "Model for software taxonomy classification (Gemini only)"
+                "default": "gemini-2.5-flash",
+                "description": "Model for software taxonomy classification (Gemini 2.5 Flash with thinking)"
             }
         }
     )
     
     final_report_model: str = Field(
-        default="google_genai:gemini-2.0-flash-exp",
+        default="gemini-2.5-pro",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "google_genai:gemini-2.0-flash-exp",
-                "description": "Model for generating the final CISO security brief (Gemini only)"
+                "default": "gemini-2.5-pro",
+                "description": "Model for generating the CISO security brief (Gemini 2.5 Pro with thinking)"
             }
         }
     )

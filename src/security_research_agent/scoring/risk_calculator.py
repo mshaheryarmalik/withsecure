@@ -107,6 +107,10 @@ def calculate_risk_trust_scores(
         if risk_match:
             risk_score = int(risk_match.group(1))
     
+    # Clamp raw LLM scores to [0, 100] to guard against out-of-range values
+    trust_score = max(0, min(100, int(trust_score)))
+    risk_score = max(0, min(100, int(risk_score)))
+    
     status_update.append("")
     status_update.append("  [Step 3/5] 📊 Calculating trust & risk scores...")
     
@@ -181,8 +185,19 @@ def _adjust_scores_with_threat_intel(
     
     # Apply advisory penalty
     if advisory_penalty > 0:
-        risk_score = min(100, risk_score + int(advisory_penalty))
-        status_update.append(f"        ⚠️  Additional advisories: {int(advisory_penalty)} risk points added")
+        penalty_points = int(advisory_penalty)
+        # Increase risk based on total advisory volume
+        risk_score = min(100, risk_score + penalty_points)
+        # Slightly decrease trust as well to reflect advisory history
+        trust_penalty = max(1, penalty_points // 2)
+        trust_score = max(0, trust_score - trust_penalty)
+        status_update.append(
+            f"        ⚠️  Additional advisories: {penalty_points} risk points added, trust slightly reduced"
+        )
+    
+    # Final safety clamp
+    trust_score = max(0, min(100, int(trust_score)))
+    risk_score = max(0, min(100, int(risk_score)))
     
     return trust_score, risk_score
 
@@ -260,11 +275,66 @@ def _calculate_confidence_level(
         data_sources += 1
         source_names.append("HIBP")
     
-    # Count additional sources
+    # Count additional sources that have meaningful signal
     if additional_data:
-        for source_key in additional_data.keys():
+        # GitHub advisories
+        gh_advisories = additional_data.get("github_advisories") or {}
+        if gh_advisories.get("advisory_count", 0) > 0:
             data_sources += 1
-            source_names.append(source_key.replace('_', ' ').title())
+            source_names.append("GitHub Advisories")
+        
+        # US-CERT / CISA advisories
+        cert_advisories = additional_data.get("us_cert") or {}
+        if cert_advisories.get("advisory_count", 0) > 0:
+            data_sources += 1
+            source_names.append("US-CERT / CISA Advisories")
+        
+        # MalwareBazaar
+        malware_data = additional_data.get("malwarebazaar") or {}
+        if malware_data.get("malware_detected"):
+            data_sources += 1
+            source_names.append("MalwareBazaar")
+        
+        # URLhaus
+        urlhaus_data = additional_data.get("urlhaus") or {}
+        if urlhaus_data.get("malicious_urls_found", 0) > 0:
+            data_sources += 1
+            source_names.append("URLhaus")
+        
+        # AlienVault OTX
+        otx_data = additional_data.get("otx") or {}
+        if otx_data.get("threat_found"):
+            data_sources += 1
+            source_names.append("AlienVault OTX")
+        
+        # WHOIS domain data
+        whois_data = additional_data.get("whois") or {}
+        if whois_data.get("creation_date"):
+            data_sources += 1
+            source_names.append("WHOIS")
+        
+        # Company profile
+        company_data = additional_data.get("company") or {}
+        if company_data.get("founded_year"):
+            data_sources += 1
+            source_names.append("Company Profile")
+        
+        # Any other additional sources with non-empty payload
+        known_keys = {
+            "github_advisories",
+            "us_cert",
+            "malwarebazaar",
+            "urlhaus",
+            "otx",
+            "whois",
+            "company",
+        }
+        for source_key, value in additional_data.items():
+            if source_key in known_keys:
+                continue
+            if value:
+                data_sources += 1
+                source_names.append(source_key.replace("_", " ").title())
     
     status_update.append(f"        ├─ Data sources available: {data_sources}")
     for i, name in enumerate(source_names[:6], 1):

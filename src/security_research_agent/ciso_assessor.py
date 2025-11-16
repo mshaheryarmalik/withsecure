@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
@@ -45,8 +44,8 @@ from .tools import (
     lookup_latest_version,
 )
 from .api_utils import get_api_key_for_model
-from .constants import DEFAULT_CLASSIFICATION_MODEL
-from .llm_utils import extract_json_from_markdown
+from .constants import DEFAULT_CLASSIFICATION_MODEL, DEFAULT_FINAL_REPORT_MODEL
+from .llm_utils import extract_json_from_markdown, init_gemini_model
 from .debug_logger import get_debug_logger
 from .scoring import calculate_risk_trust_scores
 from .parsers import parse_compliance_data, build_citations
@@ -334,15 +333,15 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         # Get configuration
         configuration = Configuration.from_runnable_config(config)
         
-        # Initialize LLM (use Gemini model - same pattern as workers)
+        # Initialize LLM with thinking enabled
         model_name = configuration.classification_model or DEFAULT_CLASSIFICATION_MODEL
         api_key = get_api_key_for_model(model_name, config)
         
-        llm = init_chat_model(
-            model=model_name,
-            model_provider="google_genai",
+        llm = init_gemini_model(
+            model_name=model_name,
             api_key=api_key,
-            temperature=0
+            temperature=0,
+            thinking_budget=1024
         )
         
         # Format categories as a numbered list for better LLM processing
@@ -800,22 +799,16 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         configuration = Configuration.from_runnable_config(config)
         status_update.append(f"  ⚙️  Model: {configuration.final_report_model}")
         
-        # Parse model string (format: "provider:model" or just "model")
-        model_str = configuration.final_report_model
-        if ":" in model_str:
-            provider, model_name = model_str.split(":", 1)
-        else:
-            provider = "google_genai"
-            model_name = model_str
+        # Get model name and API key
+        model_name = configuration.final_report_model or DEFAULT_FINAL_REPORT_MODEL
+        api_key = get_api_key_for_model(model_name, config or {})
         
-        # Get API key
-        api_key = get_api_key_for_model(model_str, config or {})
-        
-        # Initialize model
-        model = init_chat_model(
-            model=model_name,
-            model_provider=provider,
-            api_key=api_key
+        # Initialize model with thinking enabled (Pro model for detailed reports)
+        model = init_gemini_model(
+            model_name=model_name,
+            api_key=api_key,
+            temperature=0,
+            thinking_budget=1024
         )
         
         # Prepare entity data

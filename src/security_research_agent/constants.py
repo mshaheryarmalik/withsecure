@@ -55,6 +55,7 @@ HIBP_RATE_LIMIT_DELAY = 1.5  # seconds (required by HIBP API)
 
 
 # Default Model Names
-DEFAULT_CLASSIFICATION_MODEL = "gemini-2.0-flash-exp"
-DEFAULT_ANALYSIS_MODEL = "google_genai:gemini-2.0-flash-exp"
+DEFAULT_CLASSIFICATION_MODEL = "gemini-2.5-flash"
+DEFAULT_FINAL_REPORT_MODEL = "gemini-2.5-pro"
+DEFAULT_ANALYSIS_MODEL = "gemini-2.5-flash"
 

@@ -39,27 +39,35 @@ def extract_json_from_markdown(response_text: str) -> Dict[str, Any]:
     return json.loads(response_text)
 
 
-def init_gemini_model(model_name: str, api_key: str, temperature: int = 0, **kwargs):
-    """Standardized Gemini model initialization.
+def init_gemini_model(model_name: str, api_key: str, temperature: int = 0, thinking_budget: int = 1024, **kwargs):
+    """Standardized Gemini model initialization with thinking/reasoning enabled.
     
     Args:
-        model_name: Model name (with or without 'google_genai:' prefix)
+        model_name: Model name (just the model name like 'gemini-2.5-flash', not prefixed)
         api_key: Google API key
         temperature: Temperature setting (default 0 for deterministic)
+        thinking_budget: Token budget for reasoning/thinking (default 1024)
         **kwargs: Additional arguments to pass to init_chat_model
         
     Returns:
-        Initialized chat model
+        Initialized chat model with thinking enabled
     """
-    # Ensure consistent format
-    if not model_name.startswith("google_genai:"):
-        model_name = f"google_genai:{model_name}"
+    # Remove any provider prefix if present
+    if ":" in model_name:
+        model_name = model_name.split(":", 1)[1]
     
-    return init_chat_model(
-        model=model_name,
-        model_provider="google_genai",
-        api_key=api_key,
-        temperature=temperature,
+    # Configure model kwargs
+    model_kwargs = {
+        "model": model_name,
+        "model_provider": "google_genai",
+        "api_key": api_key,
+        "temperature": temperature,
         **kwargs
-    )
+    }
+    
+    # Add thinking budget if model supports it (Gemini 2.5+)
+    if "2.5" in model_name or "2.0-flash-thinking" in model_name:
+        model_kwargs["thinking_budget"] = thinking_budget
+    
+    return init_chat_model(**model_kwargs)
 

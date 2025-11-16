@@ -2,14 +2,14 @@
 
 from typing import Any, Dict, List
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from ..api_utils import get_api_key_for_model
 from ..configuration import Configuration
 from ..constants import DEFAULT_CLASSIFICATION_MODEL
-from ..llm_utils import extract_json_from_markdown
+from ..llm_utils import extract_json_from_markdown, init_gemini_model
+from ..security_prompts import ALTERNATIVE_EXTRACTION_PROMPT
 from ..security_state import AlternativeProduct
 
 
@@ -59,38 +59,22 @@ def extract_alternatives_from_community(
         return alternatives
     
     try:
-        # Build extraction prompt
-        extraction_prompt = f"""Extract the actual alternative product/software names mentioned in these search results.
-
-Search results about alternatives to "{state_entity.get('product_name', 'the product')}":
-{summaries_text}
-
-Return ONLY a JSON array of the top 1 to 2 alternative products mentioned, with this format:
-[
-  {{"product_name": "Product Name", "vendor_name": "Vendor Name", "reason": "brief reason why it's an alternative"}},
-  ...
-]
-
-IMPORTANT:
-- Extract ACTUAL product names (e.g., "Microsoft Teams", "Slack", "Google Workspace")
-- Do NOT include generic terms like "alternatives", "competitors", "best tools"
-- Only include products that are clearly mentioned as alternatives
-- Limit to top 1 to 2 most relevant alternatives
-- If no vendor names are found, dont return them.
-- If no product names are found, dont return the product name
-- If no reason is found, dont return the reason
-- Return ONLY the JSON array, no other text"""
+        # Build extraction prompt from consolidated prompts
+        extraction_prompt = ALTERNATIVE_EXTRACTION_PROMPT.format(
+            product_name=state_entity.get('product_name', 'the product'),
+            summaries_text=summaries_text
+        )
         
-        # Initialize LLM
+        # Initialize LLM with thinking enabled
         configuration = Configuration.from_runnable_config(config)
         model_name = configuration.classification_model or DEFAULT_CLASSIFICATION_MODEL
         api_key = get_api_key_for_model(model_name, config)
         
-        llm = init_chat_model(
-            model=model_name,
-            model_provider="google_genai",
+        llm = init_gemini_model(
+            model_name=model_name,
             api_key=api_key,
-            temperature=0
+            temperature=0,
+            thinking_budget=1024
         )
         
         # Extract products using LLM
