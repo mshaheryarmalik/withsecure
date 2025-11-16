@@ -477,6 +477,9 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
             check_cisa_kev,
             search_databreaches_net,
             search_privacy_rights_clearinghouse,
+            lookup_circl_cves,
+            search_cisa_alerts,
+            search_packetstorm_advisories,
         )
         
         product_name = state.entity.get("product_name", "Unknown") if state.entity else "Unknown"
@@ -555,7 +558,7 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
                     logger.log_tool_call("check_cisa_kev", kev_input, kev_result)
                     kev_count = kev_result.get("kev_count", 0)
                     if kev_count:
-                        status_update.append(f"        └─ CISA KEV: {kev_count} exploit(s) confirmed")
+                        status_update.append(f"        ├─ CISA KEV: {kev_count} exploit(s) confirmed")
                         cve_data["cisa_kev_count"] = kev_count
                         # Mark CVEs present in KEV
                         kev_ids = {entry.get("cve_id") or entry.get("cveID") for entry in kev_result.get("kev_entries", [])}
@@ -565,11 +568,27 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
                         all_data["cisa_kev"] = kev_result
                         citation_count += 1
                     else:
-                        status_update.append("        └─ CISA KEV: No matches")
+                        status_update.append("        ├─ CISA KEV: No matches")
         except Exception as e:
             logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
             cve_data = {"total_cves": 0, "data_available": False, "error": str(e)}
             status_update.append(f"        ├─ NVD: Query failed ({str(e)})")
+        
+        # CIRCL CVE search (no API key required)
+        try:
+            circl_input = {
+                "product_name": product_name,
+                "vendor_name": vendor_name if vendor_name and vendor_name.lower() != "unknown" else None,
+            }
+            circl_data = lookup_circl_cves.invoke(circl_input)
+            if circl_data.get("match_count", 0) > 0:
+                status_update.append(f"        ├─ CIRCL CVE Search: {circl_data['match_count']} matches")
+                all_data['circl_cves'] = circl_data
+                citation_count += 1
+            else:
+                status_update.append("        ├─ CIRCL CVE Search: No matches")
+        except Exception as e:
+            status_update.append(f"        ├─ CIRCL CVE Search: Failed ({str(e)})")
         
         # GitHub Advisories
         try:
@@ -585,11 +604,35 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         try:
             cert_data = search_us_cert_advisories.invoke({"product_name": product_name})
             if cert_data.get('advisory_count', 0) > 0:
-                status_update.append(f"        └─ US-CERT: {cert_data['advisory_count']} advisories")
+                status_update.append(f"        ├─ US-CERT: {cert_data['advisory_count']} advisories")
                 all_data['us_cert'] = cert_data
                 citation_count += 1
         except:
-            status_update.append("        └─ US-CERT: No advisories found")
+            status_update.append("        ├─ US-CERT: No advisories found")
+        
+        # CISA Alerts feed
+        try:
+            cisa_alerts = search_cisa_alerts.invoke({"product_name": product_name})
+            if cisa_alerts.get("match_count", 0) > 0:
+                status_update.append(f"        ├─ CISA Alerts: {cisa_alerts['match_count']} relevant alert(s)")
+                all_data['cisa_alerts'] = cisa_alerts
+                citation_count += 1
+            else:
+                status_update.append("        ├─ CISA Alerts: No matches")
+        except Exception as e:
+            status_update.append(f"        ├─ CISA Alerts: Lookup failed ({str(e)})")
+        
+        # Packet Storm advisories
+        try:
+            packetstorm_data = search_packetstorm_advisories.invoke({"product_name": product_name})
+            if packetstorm_data.get("match_count", 0) > 0:
+                status_update.append(f"        └─ Packet Storm: {packetstorm_data['match_count']} advisory hit(s)")
+                all_data['packetstorm'] = packetstorm_data
+                citation_count += 1
+            else:
+                status_update.append("        └─ Packet Storm: No matches")
+        except Exception as e:
+            status_update.append(f"        └─ Packet Storm: Lookup failed ({str(e)})")
         
         # [2] Vendor Security & Compliance
         status_update.append("")
@@ -1272,6 +1315,13 @@ IMPORTANT:
                 SourceLabel.INDEPENDENT,
                 "Known exploited vulnerabilities",
             )
+        if state.additional_data and state.additional_data.get("circl_cves"):
+            add_citation(
+                state.additional_data["circl_cves"].get("source_url") or "https://cve.circl.lu",
+                "CIRCL CVE Search",
+                SourceLabel.INDEPENDENT,
+                "Additional vulnerability intelligence",
+            )
 
         # GitHub Advisories
         if state.additional_data and state.additional_data.get("github_advisories"):
@@ -1311,6 +1361,13 @@ IMPORTANT:
                     SourceLabel.INDEPENDENT,
                     "Recent security incident reporting",
                 )
+            if state.additional_data.get("cisa_alerts") and state.additional_data["cisa_alerts"].get("alerts"):
+                add_citation(
+                    state.additional_data["cisa_alerts"].get("source_url") or "https://www.cisa.gov/cybersecurity-advisories",
+                    "CISA Alerts",
+                    SourceLabel.INDEPENDENT,
+                    "Government cybersecurity alerts",
+                )
             if state.additional_data.get("databreaches_net") and state.additional_data["databreaches_net"].get("breaches"):
                 add_citation(
                     state.additional_data["databreaches_net"]["breaches"][0].get("url"),
@@ -1348,6 +1405,13 @@ IMPORTANT:
                     "AlienVault OTX",
                     SourceLabel.INDEPENDENT,
                     "Community threat intelligence",
+                )
+            if state.additional_data.get("packetstorm") and state.additional_data["packetstorm"].get("advisories"):
+                add_citation(
+                    state.additional_data["packetstorm"].get("source_url") or "https://packetstormsecurity.com",
+                    "Packet Storm",
+                    SourceLabel.INDEPENDENT,
+                    "Security exploit reporting",
                 )
 
         # Compliance and policy documents

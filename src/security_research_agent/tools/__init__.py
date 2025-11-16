@@ -16,6 +16,7 @@ from .vulnerability import (
     lookup_cves,
     check_cisa_kev,
     lookup_github_advisories,
+    lookup_circl_cves,
 )
 
 from .vendor_compliance import (
@@ -45,6 +46,8 @@ from .news import (
 from .advisories import (
     search_us_cert_advisories,
     search_cert_cc_advisories,
+    search_cisa_alerts,
+    search_packetstorm_advisories,
 )
 
 from .company_info import (
@@ -75,6 +78,7 @@ def get_security_tools():
         lookup_cves,
         check_cisa_kev,
         lookup_github_advisories,
+        lookup_circl_cves,
         
         # Vendor & Compliance
         fetch_vendor_security_info,
@@ -126,6 +130,7 @@ __all__ = [
     'lookup_cves',
     'check_cisa_kev',
     'lookup_github_advisories',
+    'lookup_circl_cves',
     
     # Vendor & Compliance
     'fetch_vendor_security_info',
@@ -150,6 +155,8 @@ __all__ = [
     # Advisories
     'search_us_cert_advisories',
     'search_cert_cc_advisories',
+    'search_cisa_alerts',
+    'search_packetstorm_advisories',
     
     # Company Information
     'lookup_whois',
