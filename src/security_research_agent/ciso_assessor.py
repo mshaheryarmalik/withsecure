@@ -458,11 +458,25 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
     
     try:
         from .tools import (
-            lookup_cves, fetch_vendor_security_info, lookup_security_incidents,
-            lookup_github_advisories, fetch_terms_of_service, fetch_privacy_policy,
-            fetch_dpa, search_security_news, search_us_cert_advisories,
-            lookup_malwarebazaar, lookup_urlhaus, lookup_alienvault_otx,
-            lookup_whois, search_company_info, search_alternatives, check_fedramp
+            lookup_cves,
+            fetch_vendor_security_info,
+            lookup_security_incidents,
+            lookup_github_advisories,
+            fetch_terms_of_service,
+            fetch_privacy_policy,
+            fetch_dpa,
+            search_security_news,
+            search_us_cert_advisories,
+            lookup_malwarebazaar,
+            lookup_urlhaus,
+            lookup_alienvault_otx,
+            lookup_whois,
+            search_company_info,
+            search_alternatives,
+            check_fedramp,
+            check_cisa_kev,
+            search_databreaches_net,
+            search_privacy_rights_clearinghouse,
         )
         
         product_name = state.entity.get("product_name", "Unknown") if state.entity else "Unknown"
@@ -486,11 +500,10 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         
         # [0] Version Detection (if not provided)
         resolved_version = state.product_version
-        skip_cves = False
         
         if not resolved_version or resolved_version == "latest":
             status_update.append("  [0/6]  VERSION DETECTION")
-            status_update.append("        ├─ No version specified, looking up latest version...")
+            status_update.append("        ├─ No version specified, attempting to detect latest release...")
             try:
                 version_result = lookup_latest_version.invoke({
                     "product_name": product_name,
@@ -503,14 +516,11 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
                     status_update.append(f"        └─ Source: {version_result.get('source', 'Tavily search')}")
                 else:
                     resolved_version = None
-                    skip_cves = True
-                    status_update.append("        └─ [WARNING] Could not determine version")
-                    status_update.append("        └─ [INFO] CVE lookup will be skipped (version required)")
+                    status_update.append("        └─ [INFO] Could not confirm latest version, continuing with product-wide CVE search")
             except Exception as e:
                 resolved_version = None
-                skip_cves = True
                 status_update.append(f"        └─ [WARNING] Version lookup failed: {str(e)}")
-                status_update.append("        └─ [INFO] CVE lookup will be skipped (version required)")
+                status_update.append("        └─ Proceeding with product-wide CVE search")
             
             status_update.append("")
         else:
@@ -521,30 +531,45 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
         status_update.append("  [1/6]   VULNERABILITY DATABASES")
         cve_data = None
         
-        if skip_cves:
-            # Skip CVE lookup if version is not available
-            cve_data = {"total_cves": 0, "data_available": False, "skipped": True, "reason": "Version not available"}
-            status_update.append("        ├─ NVD: Skipped (version required for accurate CVE matching)")
-            status_update.append("        └─ [INFO] Please provide --version flag for CVE analysis")
-        else:
-            try:
-                # Use resolved_version (either user-provided or auto-detected)
-                cve_input = {
-                    "product_name": product_name,
-                    "vendor_name": vendor_name,
-                    "product_version": resolved_version
-                }
-                logger.log_tool_call("lookup_cves", cve_input)
-                cve_data = lookup_cves.invoke(cve_input)
-                logger.log_tool_call("lookup_cves", cve_input, cve_data)
-                cve_count = cve_data.get('total_cves', 0)
-                version_str = f" for version {resolved_version}" if resolved_version else ""
-                status_update.append(f"        ├─ NVD: {cve_count} CVEs found{version_str} ({cve_data.get('critical_count', 0)} critical)")
-                citation_count += 1
-            except Exception as e:
-                logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
-                cve_data = {"total_cves": 0, "data_available": False}
-                status_update.append("        ├─ NVD: Query failed")
+        try:
+            cve_input = {
+                "product_name": product_name,
+                "vendor_name": vendor_name,
+                "product_version": resolved_version if resolved_version and resolved_version.lower() != "latest" else None
+            }
+            logger.log_tool_call("lookup_cves", cve_input)
+            cve_data = lookup_cves.invoke(cve_input)
+            logger.log_tool_call("lookup_cves", cve_input, cve_data)
+            cve_count = cve_data.get('total_cves', 0)
+            version_str = f" for version {resolved_version}" if resolved_version else ""
+            status_update.append(f"        ├─ NVD: {cve_count} CVEs found{version_str} ({cve_data.get('critical_count', 0)} critical)")
+            citation_count += 1
+            
+            # Cross-reference against CISA KEV when CVEs are present
+            recent_cves = cve_data.get("recent_cves", [])
+            if recent_cves:
+                kev_input = {"cve_ids": [entry.get("cve_id") for entry in recent_cves if entry.get("cve_id")]}
+                if kev_input["cve_ids"]:
+                    logger.log_tool_call("check_cisa_kev", kev_input)
+                    kev_result = check_cisa_kev.invoke(kev_input)
+                    logger.log_tool_call("check_cisa_kev", kev_input, kev_result)
+                    kev_count = kev_result.get("kev_count", 0)
+                    if kev_count:
+                        status_update.append(f"        └─ CISA KEV: {kev_count} exploit(s) confirmed")
+                        cve_data["cisa_kev_count"] = kev_count
+                        # Mark CVEs present in KEV
+                        kev_ids = {entry.get("cve_id") or entry.get("cveID") for entry in kev_result.get("kev_entries", [])}
+                        for entry in recent_cves:
+                            if entry.get("cve_id") in kev_ids:
+                                entry["in_cisa_kev"] = True
+                        all_data["cisa_kev"] = kev_result
+                        citation_count += 1
+                    else:
+                        status_update.append("        └─ CISA KEV: No matches")
+        except Exception as e:
+            logger.log_tool_call("lookup_cves", {"product_name": product_name, "vendor_name": vendor_name, "product_version": resolved_version}, error=e)
+            cve_data = {"total_cves": 0, "data_available": False, "error": str(e)}
+            status_update.append(f"        ├─ NVD: Query failed ({str(e)})")
         
         # GitHub Advisories
         try:
@@ -648,24 +673,47 @@ def gather_security_data_node(state: AssessmentState, config: RunnableConfig) ->
                     citation_count += 1
                 else:
                     status_update.append("        ├─ HaveIBeenPwned: No breaches found ✓")
-            except:
-                incident_data = {"breach_count": 0, "data_available": False}
-                status_update.append("        ├─ HaveIBeenPwned: API key required")
+            except Exception as e:
+                incident_data = {"breach_count": 0, "data_available": False, "error": str(e)}
+                status_update.append(f"        ├─ HaveIBeenPwned: {str(e)}")
             
             # Security News
             try:
                 news_data = search_security_news.invoke({"product_name": product_name})
                 news_count = news_data.get('incident_count', 0)
                 if news_count > 0:
-                    status_update.append(f"        └─ Security News: {news_count} incidents reported")
+                    status_update.append(f"        ├─ Security News: {news_count} incidents reported")
                     all_data['news'] = news_data
                     citation_count += 1
                 else:
-                    status_update.append("        └─ Security News: No recent incidents")
-            except:
-                status_update.append("        └─ Security News: Search failed")
+                    status_update.append("        ├─ Security News: No recent incidents")
+            except Exception as e:
+                status_update.append(f"        ├─ Security News: Search failed ({str(e)})")
         else:
-            status_update.append("        └─ No website - skipping breach checks")
+            status_update.append("        ├─ No website - skipping domain breach checks")
+        
+        # Additional breach intelligence
+        try:
+            databreach_data = search_databreaches_net.invoke({"product_name": product_name})
+            if databreach_data.get('breach_count', 0) > 0:
+                status_update.append(f"        ├─ DataBreaches.net: {databreach_data['breach_count']} relevant report(s)")
+                all_data['databreaches_net'] = databreach_data
+                citation_count += 1
+            else:
+                status_update.append("        ├─ DataBreaches.net: No recent reports")
+        except Exception as e:
+            status_update.append(f"        ├─ DataBreaches.net: Lookup failed ({str(e)})")
+        
+        try:
+            prc_data = search_privacy_rights_clearinghouse.invoke({"product_name": product_name})
+            if prc_data.get('breach_count', 0) > 0:
+                status_update.append(f"        └─ Privacy Rights Clearinghouse: {prc_data['breach_count']} incident(s)")
+                all_data['privacy_rights'] = prc_data
+                citation_count += 1
+            else:
+                status_update.append("        └─ Privacy Rights Clearinghouse: No indexed incidents")
+        except Exception as e:
+            status_update.append(f"        └─ Privacy Rights Clearinghouse: Lookup failed ({str(e)})")
         
         # [4] Threat Intelligence
         status_update.append("")
@@ -1187,49 +1235,173 @@ IMPORTANT:
         else:
             status_update.append(f"        └─ ⚠️  No alternatives found")
         
-        # Build citations from ALL sources
-        citations = []
-        citation_map = {
-            'nvd': ("https://nvd.nist.gov", "NVD", SourceLabel.INDEPENDENT, "CVE data and vulnerability counts"),
-            'github_advisories': ("https://github.com/advisories", "GitHub Advisories", SourceLabel.INDEPENDENT, "Security advisories"),
-            'us_cert': ("https://www.cisa.gov/uscert/", "US-CERT", SourceLabel.INDEPENDENT, "CERT advisories"),
-            'hibp': ("https://haveibeenpwned.com", "HaveIBeenPwned", SourceLabel.INDEPENDENT, "Breach data"),
-            'news': ("Tavily Search", "Security News", SourceLabel.INDEPENDENT, "Security incident reports"),
-            'malwarebazaar': ("https://bazaar.abuse.ch", "MalwareBazaar", SourceLabel.INDEPENDENT, "Malware sample database"),
-            'urlhaus': ("https://urlhaus.abuse.ch", "URLhaus", SourceLabel.INDEPENDENT, "Malicious URL detection"),
-            'otx': ("https://otx.alienvault.com", "AlienVault OTX", SourceLabel.INDEPENDENT, "Threat intelligence"),
-            'whois': ("WHOIS Lookup", "Domain WHOIS", SourceLabel.INDEPENDENT, "Domain registration data"),
-            'fedramp': ("https://marketplace.fedramp.gov", "FedRAMP", SourceLabel.INDEPENDENT, "Government cloud authorization"),
-            'tos': (entity_data.website, "Terms of Service", SourceLabel.VENDOR_STATED, "Legal terms"),
-            'privacy': (entity_data.website, "Privacy Policy", SourceLabel.VENDOR_STATED, "Privacy commitments"),
-            'dpa': (entity_data.website, "Data Processing Agreement", SourceLabel.VENDOR_STATED, "Data handling terms"),
-            'company': ("Tavily Search", "Company Info", SourceLabel.INDEPENDENT, "Company background"),
-            'alternatives': ("Tavily Search", "Alternatives", SourceLabel.INDEPENDENT, "Alternative products"),
-        }
-        
-        # Add NVD citation if CVE data exists
-        if cve_summary.citation:
-            url, name, label, claim = citation_map['nvd']
-            citations.append(Citation(
-                source_url=url,
-                source_type=name,
-                source_label=label,
-                accessed_date=datetime.now().strftime("%Y-%m-%d"),
-                claim=claim
-            ))
-        
-        # Add citations from additional_data
+        # Build citations from ALL sources with real URLs
+        citations: List[Citation] = []
+        citation_urls_seen = set()
+
+        def add_citation(url: Optional[str], source_type: str, label: SourceLabel, claim: str) -> None:
+            if not url:
+                return
+            if url in citation_urls_seen:
+                return
+            citation_urls_seen.add(url)
+            citations.append(
+                Citation(
+                    source_url=url,
+                    source_type=source_type,
+                    source_label=label,
+                    accessed_date=datetime.now().strftime("%Y-%m-%d"),
+                    claim=claim,
+                )
+            )
+
+        # NVD
+        if state.cve_data and state.cve_data.get("data_available"):
+            add_citation(
+                state.cve_data.get("source_url") or "https://nvd.nist.gov",
+                "NVD",
+                SourceLabel.INDEPENDENT,
+                "CVE data and vulnerability counts",
+            )
+
+        # CISA KEV
+        if state.additional_data and state.additional_data.get("cisa_kev"):
+            add_citation(
+                "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+                "CISA KEV Catalog",
+                SourceLabel.INDEPENDENT,
+                "Known exploited vulnerabilities",
+            )
+
+        # GitHub Advisories
+        if state.additional_data and state.additional_data.get("github_advisories"):
+            github_advisories = state.additional_data["github_advisories"].get("advisories", [])
+            if github_advisories:
+                add_citation(
+                    github_advisories[0].get("url"),
+                    "GitHub Security Advisory",
+                    SourceLabel.INDEPENDENT,
+                    "Open source security advisory",
+                )
+
+        # US-CERT Advisories
+        if state.additional_data and state.additional_data.get("us_cert"):
+            advisories = state.additional_data["us_cert"].get("advisories", [])
+            if advisories:
+                add_citation(
+                    advisories[0].get("url"),
+                    "US-CERT Advisory",
+                    SourceLabel.INDEPENDENT,
+                    "Government-issued security advisory",
+                )
+
+        # Incident and breach data
+        if state.incident_data and state.incident_data.get("breach_count", 0) > 0:
+            add_citation(
+                "https://haveibeenpwned.com",
+                "HaveIBeenPwned",
+                SourceLabel.INDEPENDENT,
+                "Historic credential breach data",
+            )
         if state.additional_data:
-            for source_key, source_data in state.additional_data.items():
-                if source_key in citation_map and source_data:  # Only add if data exists
-                    url, name, label, claim = citation_map[source_key]
-                    citations.append(Citation(
-                        source_url=url,
-                        source_type=name,
-                        source_label=label,
-                        accessed_date=datetime.now().strftime("%Y-%m-%d"),
-                        claim=claim
-                    ))
+            if state.additional_data.get("news") and state.additional_data["news"].get("incidents"):
+                add_citation(
+                    state.additional_data["news"]["incidents"][0].get("url"),
+                    "Security News",
+                    SourceLabel.INDEPENDENT,
+                    "Recent security incident reporting",
+                )
+            if state.additional_data.get("databreaches_net") and state.additional_data["databreaches_net"].get("breaches"):
+                add_citation(
+                    state.additional_data["databreaches_net"]["breaches"][0].get("url"),
+                    "DataBreaches.net",
+                    SourceLabel.INDEPENDENT,
+                    "Independent breach reporting",
+                )
+            if state.additional_data.get("privacy_rights") and state.additional_data["privacy_rights"].get("breaches"):
+                add_citation(
+                    state.additional_data["privacy_rights"]["breaches"][0].get("url"),
+                    "Privacy Rights Clearinghouse",
+                    SourceLabel.INDEPENDENT,
+                    "Privacy incident repository",
+                )
+
+        # Threat intelligence
+        if state.additional_data:
+            if state.additional_data.get("malwarebazaar") and state.additional_data["malwarebazaar"].get("malware_detected"):
+                add_citation(
+                    "https://bazaar.abuse.ch",
+                    "MalwareBazaar",
+                    SourceLabel.INDEPENDENT,
+                    "Malware sample intelligence",
+                )
+            if state.additional_data.get("urlhaus") and state.additional_data["urlhaus"].get("malicious_urls_found", 0) > 0:
+                add_citation(
+                    "https://urlhaus.abuse.ch",
+                    "URLhaus",
+                    SourceLabel.INDEPENDENT,
+                    "Malicious URL intelligence",
+                )
+            if state.additional_data.get("otx") and state.additional_data["otx"].get("threat_found"):
+                add_citation(
+                    "https://otx.alienvault.com",
+                    "AlienVault OTX",
+                    SourceLabel.INDEPENDENT,
+                    "Community threat intelligence",
+                )
+
+        # Compliance and policy documents
+        tos_url = None
+        privacy_url = None
+        dpa_url = None
+        if state.additional_data:
+            if state.additional_data.get("tos"):
+                tos_url = state.additional_data["tos"].get("url")
+                add_citation(
+                    tos_url,
+                    "Terms of Service",
+                    SourceLabel.VENDOR_STATED,
+                    "Vendor legal commitments",
+                )
+            if state.additional_data.get("privacy"):
+                privacy_url = state.additional_data["privacy"].get("url")
+                add_citation(
+                    privacy_url,
+                    "Privacy Policy",
+                    SourceLabel.VENDOR_STATED,
+                    "Vendor privacy representations",
+                )
+            if state.additional_data.get("dpa"):
+                dpa_url = state.additional_data["dpa"].get("url")
+                add_citation(
+                    dpa_url,
+                    "Data Processing Agreement",
+                    SourceLabel.VENDOR_STATED,
+                    "Vendor data handling terms",
+                )
+        else:
+            tos_url = privacy_url = dpa_url = None
+
+        # FedRAMP listing
+        if state.additional_data and state.additional_data.get("fedramp"):
+            add_citation(
+                state.additional_data["fedramp"].get("url") or "https://marketplace.fedramp.gov",
+                "FedRAMP Marketplace",
+                SourceLabel.INDEPENDENT,
+                "Federal authorization status",
+            )
+
+        # Company intel
+        if state.additional_data and state.additional_data.get("company"):
+            company_sources = state.additional_data["company"].get("sources", [])
+            if company_sources:
+                add_citation(
+                    company_sources[0],
+                    "Company Intelligence",
+                    SourceLabel.INDEPENDENT,
+                    "Corporate background research",
+                )
+
         
         # Note insufficient data areas (updated to account for all sources)
         insufficient_notes = []
@@ -1380,11 +1552,15 @@ IMPORTANT:
                 gdpr_compliant=gdpr_compliant,
             ),
             data_handling=DataHandling(
-                tos_url=entity_data.website,
-                encryption=encryption_mentioned,
+                tos_url=tos_url,
+                dpa_url=dpa_url,
+                privacy_policy_url=privacy_url,
+                encryption_claimed=encryption_mentioned,
+                encryption_details=encryption_source if encryption_mentioned else None,
                 data_retention=data_retention_policy,
                 third_party_sharing=third_party_sharing,
                 source_label=SourceLabel.VENDOR_STATED,
+                data_available=has_compliance_data,
             ),
             deployment_controls="Standard SaaS deployment with admin controls (specifics require vendor documentation)",
             trust_score=trust_score,
