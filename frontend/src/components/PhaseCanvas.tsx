@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { PhaseCard } from './PhaseCard';
 import { PhaseDetailsModal } from './PhaseDetailsModal';
-import { FileText, Search } from 'lucide-react';
+import { ContextMenu } from './ContextMenu';
+import { FileText, Shield, RotateCcw, Trash2, Download, Link2, Copy, Share2 } from 'lucide-react';
 
 interface Phase {
   id: string;
@@ -16,9 +17,13 @@ interface PhaseCanvasProps {
   phases: Phase[];
   reportReady?: boolean;
   onViewReport?: () => void;
+  onRerunAnalysis?: () => void;
+  onClearAnalysis?: () => void;
+  onDownloadPDF?: () => void;
+  currentQuery?: string;
 }
 
-export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasProps) {
+export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis, onClearAnalysis, onDownloadPDF, currentQuery }: PhaseCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
@@ -27,6 +32,12 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
   const [wittyRemarkIndex, setWittyRemarkIndex] = useState(0);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const mousePos = useRef({ x: 0, y: 0 });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // Detect if mobile device
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || windowWidth < 768;
+  };
 
   const GRID_SIZE = 10;
 
@@ -175,9 +186,9 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
 
   const getPhasePositions = () => {
     // 2x2 grid layout for desktop, top-down for mobile
-    const isMobile = windowWidth < 768;
+    const isMobileDevice = isMobile();
     
-    if (isMobile) {
+    if (isMobileDevice) {
       // Top-down layout for mobile
       return [
         { x: 50, y: 15 },  // Phase 1
@@ -198,8 +209,150 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
 
   const positions = getPhasePositions();
 
+  // Handle right-click context menu
+  const handleContextMenu = (e: React.MouseEvent) => {
+    // Disable context menu on mobile
+    if (isMobile()) {
+      return;
+    }
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCopyReportLink = async () => {
+    const link = `${window.location.origin}/report/${currentQuery || 'analysis'}`;
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+        console.log('Report link copied to clipboard');
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        fallbackCopyTextToClipboard(link);
+      }
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      // Try fallback method if modern API fails
+      fallbackCopyTextToClipboard(link);
+    }
+  };
+
+  const handleCopyResults = async () => {
+    const results = `Security Assessment Results for ${currentQuery}\n\nPhases Completed: ${phases.filter(p => p.status === 'completed').length}/${phases.length}\nReport Ready: ${reportReady ? 'Yes' : 'No'}`;
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(results);
+        console.log('Results copied to clipboard');
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        fallbackCopyTextToClipboard(results);
+      }
+    } catch (err) {
+      console.error('Failed to copy results:', err);
+      // Try fallback method if modern API fails
+      fallbackCopyTextToClipboard(results);
+    }
+  };
+
+  // Fallback copy method for when Clipboard API is not available
+  const fallbackCopyTextToClipboard = (text: string) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    
+    // Make the textarea invisible and out of viewport
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.style.opacity = '0';
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        console.log('Fallback: Text copied to clipboard');
+      } else {
+        console.error('Fallback: Unable to copy');
+      }
+    } catch (err) {
+      console.error('Fallback: Copy failed', err);
+    }
+    
+    document.body.removeChild(textArea);
+  };
+
+  const contextMenuItems = [
+    {
+      icon: <RotateCcw className="w-4 h-4" />,
+      label: 'Re-run Analysis',
+      onClick: () => onRerunAnalysis?.(),
+      disabled: !currentQuery || phases.length === 0,
+    },
+    {
+      icon: <FileText className="w-4 h-4" />,
+      label: 'View Report',
+      onClick: () => onViewReport?.(),
+      disabled: !reportReady,
+    },
+    {
+      icon: <Download className="w-4 h-4" />,
+      label: 'Download PDF Report',
+      onClick: () => onDownloadPDF?.(),
+      disabled: !reportReady,
+      divider: true,
+    },
+    {
+      icon: <Copy className="w-4 h-4" />,
+      label: 'Copy Results',
+      onClick: handleCopyResults,
+      disabled: phases.length === 0,
+    },
+    {
+      icon: <Link2 className="w-4 h-4" />,
+      label: 'Copy Report Link',
+      onClick: handleCopyReportLink,
+      disabled: !reportReady,
+    },
+    {
+      icon: <Share2 className="w-4 h-4" />,
+      label: 'Share Results',
+      onClick: () => {
+        if (navigator.share && reportReady) {
+          navigator.share({
+            title: `Security Assessment: ${currentQuery}`,
+            text: `Check out this security assessment report for ${currentQuery}`,
+            url: window.location.href,
+          }).catch(() => {});
+        }
+      },
+      disabled: !reportReady || !navigator.share,
+      divider: true,
+    },
+    {
+      icon: <Trash2 className="w-4 h-4" />,
+      label: 'Clear Analysis',
+      onClick: () => onClearAnalysis?.(),
+      disabled: phases.length === 0,
+      danger: true,
+    },
+  ];
+
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
+    <div 
+      ref={containerRef} 
+      className="relative w-full h-full bg-black overflow-hidden"
+      onContextMenu={handleContextMenu}
+    >
       {/* Dotted grid background */}
       <div 
         className="absolute inset-0" 
@@ -231,11 +384,9 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
       {phases.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center max-w-md mx-auto">
-            {/* Icon */}
-            <div className="relative w-20 h-20 mx-auto mb-6">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800 rounded-sm border border-slate-700 flex items-center justify-center">
-                <Search className="w-10 h-10 text-slate-400" />
-              </div>
+            {/* Large Shield Icon */}
+            <div className="relative w-32 h-32 mx-auto mb-8">
+              <Shield className="w-full h-full text-slate-700 opacity-40" strokeWidth={1.5} />
             </div>
             
             {/* Instructions */}
@@ -267,15 +418,14 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
         />
       )}
 
-      {/* Report ready button */}
-      {reportReady && onViewReport && (
-        <button
-          className="absolute bottom-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-full shadow-lg hover:bg-blue-600"
-          onClick={onViewReport}
-        >
-          <FileText className="inline-block mr-2" />
-          View Report
-        </button>
+      {/* Context menu - Desktop only */}
+      {contextMenu && !isMobile() && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

@@ -1,5 +1,8 @@
-import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
+import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle, Shield, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useState } from 'react';
+import { downloadHTMLReport } from '../utils/reportExport';
+import { downloadConsultantPDF } from '../utils/reportExportPDF';
 
 interface ReportViewProps {
   query: string;
@@ -7,6 +10,8 @@ interface ReportViewProps {
 }
 
 export function ReportView({ query, onClose }: ReportViewProps) {
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+
   // Mock data for visualizations
   const vulnerabilityData = [
     { name: 'Critical', count: 3, color: '#EF4444' },
@@ -38,54 +43,25 @@ export function ReportView({ query, onClose }: ReportViewProps) {
     { name: 'Gap', value: 22, color: '#EF4444' }
   ];
 
-  const handleDownload = () => {
-    // Create a simple HTML report
-    const reportHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Security Assessment Report - ${query}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            h1 { color: #1F2937; }
-            .metric { background: #F3F4F6; padding: 20px; margin: 10px 0; border-radius: 8px; }
-            .critical { color: #EF4444; font-weight: bold; }
-            .score { font-size: 48px; color: #3B82F6; }
-          </style>
-        </head>
-        <body>
-          <h1>Security Assessment Report</h1>
-          <h2>Entity: ${query}</h2>
-          <div class="metric">
-            <h3>Overall Trust Score</h3>
-            <div class="score">67/100</div>
-          </div>
-          <div class="metric">
-            <h3>Vulnerabilities Found</h3>
-            <p><span class="critical">Critical: 3</span> | High: 8 | Medium: 9 | Low: 3</p>
-          </div>
-          <div class="metric">
-            <h3>Compliance Status</h3>
-            <p>78% of SOC 2 requirements met</p>
-          </div>
-          <div class="metric">
-            <h3>Recommendation</h3>
-            <p>Update to latest version, implement additional monitoring, review compliance gaps.</p>
-          </div>
-          <p><small>Generated on ${new Date().toLocaleString()}</small></p>
-        </body>
-      </html>
-    `;
+  const handleDownload = (format: 'html' | 'pdf') => {
+    const reportData = {
+      query,
+      trustScore: 67,
+      criticalCVEs: 3,
+      compliance: 78,
+      patchResponse: '14d',
+      vulnerabilityData,
+      securityScoreData,
+      generatedDate: new Date().toLocaleString()
+    };
+
+    setShowDownloadMenu(false);
     
-    const blob = new Blob([reportHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `security-report-${query.replace(/\s+/g, '-')}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (format === 'html') {
+      downloadHTMLReport(reportData);
+    } else if (format === 'pdf') {
+      downloadConsultantPDF(reportData);
+    }
   };
 
   return (
@@ -102,15 +78,50 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               <p className="text-xs md:text-sm text-slate-400 font-[Inter]">{query}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button
-              onClick={handleDownload}
-              className="flex items-center gap-2 px-4 md:px-5 py-2 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 text-slate-100 rounded-full hover:from-slate-600 hover:via-slate-500 hover:to-slate-600 transition-all shadow-lg shadow-slate-700/30 border border-slate-600 hover:border-slate-500 text-sm font-medium"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Download Report</span>
-              <span className="sm:hidden">Download</span>
-            </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto relative">
+            <div className="relative">
+              <button
+                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                className="flex items-center gap-2 px-4 md:px-5 py-2 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 text-slate-100 rounded-full hover:from-slate-600 hover:via-slate-500 hover:to-slate-600 transition-all shadow-lg shadow-slate-700/30 border border-slate-600 hover:border-slate-500 text-sm font-medium"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Download Report</span>
+                <span className="sm:hidden">Download</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showDownloadMenu && (
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowDownloadMenu(false)}
+                  ></div>
+                  {/* Dropdown Menu */}
+                  <div className="absolute right-0 top-full mt-2 bg-gradient-to-br from-slate-800 to-slate-900 backdrop-blur-sm border border-slate-700 rounded-lg shadow-2xl shadow-slate-900/50 z-50 overflow-hidden min-w-[200px]">
+                    <button
+                      onClick={() => handleDownload('html')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-slate-200 hover:bg-slate-700/50 transition-colors text-sm font-mono border-b border-slate-700/50"
+                    >
+                      <FileText className="w-4 h-4 text-cyan-400" />
+                      <div className="text-left">
+                        <div className="text-sm text-slate-200">HTML Report</div>
+                        <div className="text-xs text-slate-500">Standalone web page</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDownload('pdf')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-slate-200 hover:bg-slate-700/50 transition-colors text-sm font-mono"
+                    >
+                      <Download className="w-4 h-4 text-green-400" />
+                      <div className="text-left">
+                        <div className="text-sm text-slate-200">PDF Report</div>
+                        <div className="text-xs text-slate-500">Print-ready format</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="p-2 hover:bg-slate-800/50 rounded-lg transition-colors border border-slate-700/50 hover:border-cyan-500/30"
