@@ -13,8 +13,8 @@ function getApiBaseUrl(): string {
   const protocol = window.location.protocol;
   const port = window.location.port;
 
-  // If on localhost, use localhost:8000
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+  // If on localhost, always use localhost:8000
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '') {
     return 'http://localhost:8000';
   }
 
@@ -23,9 +23,8 @@ function getApiBaseUrl(): string {
   // - http://VM_IP:3000 -> http://VM_IP:8000
   // - https://example.com -> https://example.com:8000 (or use same port if behind proxy)
   
-  // If we're on a non-standard port (like 3000), use port 8000
-  // If on standard ports (80/443), backend should be on same port or 8000
-  const backendPort = port && port !== '80' && port !== '443' ? '8000' : '';
+  // Always use port 8000 for backend (unless on standard HTTPS port 443)
+  const backendPort = protocol === 'https:' && (port === '443' || port === '') ? '' : '8000';
   const portSuffix = backendPort ? `:${backendPort}` : '';
   
   return `${protocol}//${hostname}${portSuffix}`;
