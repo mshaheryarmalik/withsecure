@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ciso-backend
+    working_dir: /app/backend
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "8000:8000"
+    # Load environment variables from backend/.env (API keys, etc.)
+    env_file:
+      - ./backend/.env
+    # Persist logs and cache on the host for debugging and reuse
+    volumes:
+      - ./backend/.logs:/app/backend/.logs
+      - ./backend/.cache:/app/backend/.cache
+    restart: unless-stopped
+
+

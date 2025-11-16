@@ -27,7 +27,7 @@ class DebugLogger:
             backend_dir = Path(__file__).resolve().parents[3]
             self.log_dir = backend_dir / ".logs"
         else:
-            self.log_dir = Path(log_dir)
+        self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
         
         # Create timestamped log file (use minute precision to group phases)
