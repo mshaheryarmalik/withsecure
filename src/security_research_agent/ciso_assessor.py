@@ -1029,7 +1029,6 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
             whois_data = state.additional_data.get('whois', {})
             if whois_data.get('creation_date'):
                 try:
-                    from datetime import datetime
                     creation_date = whois_data['creation_date']
                     if isinstance(creation_date, str) and len(creation_date) >= 4:
                         year = int(creation_date[:4])
@@ -1290,7 +1289,6 @@ IMPORTANT:
             company_data = state.additional_data['company']
             if company_data.get('founded_year'):
                 try:
-                    from datetime import datetime
                     founded_year = int(company_data['founded_year'])
                     current_year = datetime.now().year
                     company_age = current_year - founded_year

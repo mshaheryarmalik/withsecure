@@ -214,7 +214,13 @@ certified. Some historical security incidents but strong compliance posture.
 src/security_research_agent/
 ├── configuration.py      # Agent configuration
 ├── security_state.py     # Pydantic models for CISO brief
-├── security_tools.py     # Entity resolution, CVE lookup, vendor scraping
+├── tools/               # Security assessment tools (organized by category)
+│   ├── entity_resolution.py   # Entity resolution from name/URL/SHA1
+│   ├── vulnerability.py        # CVE and security advisory lookups
+│   ├── vendor_compliance.py    # Vendor security info, ToS, privacy
+│   ├── threat_intel.py         # Malware, threat intelligence
+│   ├── incidents.py            # Breach and incident data
+│   └── ...                     # Additional tool categories
 ├── security_prompts.py   # CISO-focused prompts
 ├── ciso_assessor.py     # Main LangGraph orchestration
 ├── cache.py             # File-based assessment cache
