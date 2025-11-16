@@ -351,11 +351,13 @@ if __name__ == "__main__":
 
     # Run with: python app.py
     # Or: uvicorn app:app --reload --host 0.0.0.0 --port 8000
+    # For production: set RELOAD=false or use uvicorn directly with --workers
+    reload = os.getenv("RELOAD", "true").lower() == "true"
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=reload,
         log_level="info",
     )
 
