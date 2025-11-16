@@ -7,15 +7,17 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-# API Configuration
-NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-VIRUSTOTAL_API_URL = "https://www.virustotal.com/api/v3"
-HIBP_API_URL = "https://haveibeenpwned.com/api/v3"
-GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
-MALWAREBAZAAR_API_URL = "https://mb-api.abuse.ch/api/v1/"
-URLHAUS_API_URL = "https://urlhaus-api.abuse.ch/v1/"
-ALIENVAULT_OTX_API_URL = "https://otx.alienvault.com/api/v1"
+# Import API URLs from constants
+from ..constants import (
+    NVD_API_URL,
+    CISA_KEV_URL,
+    VIRUSTOTAL_API_URL,
+    HIBP_API_URL,
+    GITHUB_GRAPHQL_URL,
+    MALWAREBAZAAR_API_URL,
+    URLHAUS_API_URL,
+    ALIENVAULT_OTX_API_URL,
+)
 
 
 def create_tavily_client(api_key: str):

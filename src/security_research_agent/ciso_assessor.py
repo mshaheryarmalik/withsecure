@@ -44,7 +44,9 @@ from .tools import (
     lookup_security_incidents,
     lookup_latest_version,
 )
-from .utils import get_api_key_for_model
+from .api_utils import get_api_key_for_model
+from .constants import DEFAULT_CLASSIFICATION_MODEL
+from .llm_utils import extract_json_from_markdown
 from .debug_logger import get_debug_logger
 
 
@@ -327,7 +329,7 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         configuration = Configuration.from_runnable_config(config)
         
         # Initialize LLM (use Gemini model - same pattern as workers)
-        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
+        model_name = configuration.classification_model or DEFAULT_CLASSIFICATION_MODEL
         api_key = get_api_key_for_model(model_name, config)
         
         llm = init_chat_model(
@@ -362,18 +364,8 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         response = llm.invoke([HumanMessage(content=prompt_text)])
         response_text = response.content
         
-        # Parse JSON response
-        # Clean up markdown formatting if present
-        response_text = response_text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-        
-        classification_result = json.loads(response_text)
+        # Parse JSON response using common utility
+        classification_result = extract_json_from_markdown(response_text)
         
         primary_category = classification_result.get("primary_category", "Other")
         secondary_categories = classification_result.get("secondary_categories", [])
@@ -937,19 +929,8 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         try:
             content = scoring_response.content if hasattr(scoring_response, 'content') else ""
             
-            # Extract JSON from response (handle markdown code blocks)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            elif "{" in content:
-                # Extract just the JSON object
-                start = content.find("{")
-                end = content.rfind("}") + 1
-                content = content[start:end]
-            
-            # Parse JSON
-            scores_data = json.loads(content)
+            # Parse JSON response using common utility
+            scores_data = extract_json_from_markdown(content)
             trust_score = scores_data.get('trust_score', 50)
             risk_score = scores_data.get('risk_score', 50)
             rationale = scores_data.get('rationale', 'Assessment based on available data')
@@ -1116,7 +1097,7 @@ IMPORTANT:
 
                         # Get configuration and initialize LLM
                         configuration = Configuration.from_runnable_config(config)
-                        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
+                        model_name = configuration.classification_model or DEFAULT_CLASSIFICATION_MODEL
                         api_key = get_api_key_for_model(model_name, config)
                         
                         llm = init_chat_model(
@@ -1129,16 +1110,8 @@ IMPORTANT:
                         response = llm.invoke([HumanMessage(content=extraction_prompt)])
                         response_text = response.content.strip()
                         
-                        # Clean JSON formatting
-                        if response_text.startswith("```json"):
-                            response_text = response_text[7:]
-                        if response_text.startswith("```"):
-                            response_text = response_text[3:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-                        response_text = response_text.strip()
-                        
-                        extracted_products = json.loads(response_text)
+                        # Parse JSON response using common utility
+                        extracted_products = extract_json_from_markdown(response_text)
                         
                         # Convert to AlternativeProduct objects
                         for product in extracted_products:
