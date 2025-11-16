@@ -1,4 +1,4 @@
-import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface ReportViewProps {
@@ -94,18 +94,18 @@ export function ReportView({ query, onClose }: ReportViewProps) {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 rounded-lg border border-cyan-500/30">
-              <FileText className="w-5 h-5 md:w-6 md:h-6 text-cyan-400" />
+            <div className="p-2 bg-gradient-to-br from-slate-600 to-slate-800 rounded-lg border border-slate-500 shadow-lg shadow-slate-700/50">
+              <Shield className="w-5 h-5 md:w-6 md:h-6 text-black" />
             </div>
             <div>
-              <h2 className="text-lg md:text-xl text-cyan-300">Security Assessment Report</h2>
-              <p className="text-xs md:text-sm text-slate-400">{query}</p>
+              <h2 className="text-lg md:text-xl text-[rgb(255,255,255)]">Security Assessment Report</h2>
+              <p className="text-xs md:text-sm text-slate-400 font-[Inter]">{query}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 text-sm"
+              className="flex items-center gap-2 px-4 md:px-5 py-2 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 text-slate-100 rounded-full hover:from-slate-600 hover:via-slate-500 hover:to-slate-600 transition-all shadow-lg shadow-slate-700/30 border border-slate-600 hover:border-slate-500 text-sm font-medium"
             >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Download Report</span>
@@ -124,7 +124,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Executive Summary */}
           <div className="mb-6">
-            <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Executive Summary
             </h3>
@@ -132,7 +132,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-3 md:p-4 hover:border-cyan-500/40 transition-all">
                 <div className="text-xs md:text-sm text-cyan-400 mb-1">Trust Score</div>
                 <div className="text-3xl md:text-4xl text-cyan-300 mb-2">67</div>
-                <div className="text-xs text-slate-400">Moderate Risk</div>
+                <div className="text-xs text-slate-400 font-[Inter]">Moderate Risk</div>
               </div>
               <div className="bg-gradient-to-br from-red-900/30 to-red-800/30 backdrop-blur-sm border border-red-500/20 rounded-lg p-3 md:p-4 hover:border-red-500/40 transition-all">
                 <div className="text-xs md:text-sm text-red-400 mb-1">Critical CVEs</div>
@@ -277,7 +277,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
 
           {/* Key Findings */}
           <div className="mb-6">
-            <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-[rgb(255,255,255)] mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Key Findings
             </h3>

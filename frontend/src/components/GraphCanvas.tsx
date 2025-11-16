@@ -351,9 +351,9 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
   }, [nodes, dimensions]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-slate-950 overflow-hidden">
+    <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
       {/* Subtle grid background - Dark theme */}
-      <div className="absolute inset-0 opacity-20" style={{
+      <div className="absolute inset-0 opacity-10" style={{
         backgroundImage: `
           linear-gradient(to right, rgba(71, 85, 105, 0.3) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(71, 85, 105, 0.3) 1px, transparent 1px)
@@ -400,14 +400,14 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
             <div className="text-center">
               {/* Minimal spinner */}
               <div className="relative w-16 h-16 mx-auto mb-4">
-                <div className="absolute inset-0 border-3 border-slate-800 rounded-full"></div>
-                <div className="absolute inset-0 border-3 border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
+                <div className="absolute inset-0 border-3 border-slate-900 rounded-full"></div>
+                <div className="absolute inset-0 border-3 border-slate-500 rounded-full border-t-transparent animate-spin"></div>
               </div>
               
               {/* Witty remark */}
               <div className="space-y-2">
-                <p className="text-slate-400">Initializing Security Matrix...</p>
-                <p className="text-xs text-slate-500 italic">
+                <p className="text-slate-400 font-mono">Initializing Security Matrix...</p>
+                <p className="text-xs text-slate-500 italic font-mono">
                   {wittyRemarks[wittyRemarkIndex]}
                 </p>
               </div>
