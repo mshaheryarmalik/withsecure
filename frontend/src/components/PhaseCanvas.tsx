@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { PhaseCard } from './PhaseCard';
 import { PhaseDetailsModal } from './PhaseDetailsModal';
-import { FileText, Search, Sparkles, Brain, Zap, Shield } from 'lucide-react';
+import { FileText, Search, Brain } from 'lucide-react';
 
 // Add fade-in animation style
 const fadeInStyle = `
@@ -41,7 +41,6 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
   const animationFrameRef = useRef<number>();
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
-  const [wittyRemarkIndex, setWittyRemarkIndex] = useState(0);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const mousePos = useRef({ x: 0, y: 0 });
 
@@ -69,6 +68,8 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
     "🎨 Crafting security assessments, one product at a time...",
     "🚀 Ready to explore the security universe? Enter a product...",
   ];
+
+  const [wittyRemarkIndex, setWittyRemarkIndex] = useState(0);
 
   // Cycle through witty remarks every 10 seconds
   useEffect(() => {
@@ -267,17 +268,9 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
       {phases.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center max-w-lg mx-auto px-4 flex flex-col items-center">
-            {/* Animated Icon - Rotates with witty remarks */}
+            {/* Brain Icon */}
             <div className="relative w-[32rem] h-[32rem] mb-8 flex items-center justify-center">
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/30 via-blue-500/30 to-purple-500/30 rounded-full border-2 border-cyan-500/40 flex items-center justify-center animate-pulse">
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/15 via-blue-500/15 to-purple-500/15 rounded-full animate-ping"></div>
-              </div>
-              <div className="relative z-10">
-                {wittyRemarkIndex % 4 === 0 && <Sparkles className="w-64 h-64 text-cyan-300 animate-bounce" />}
-                {wittyRemarkIndex % 4 === 1 && <Brain className="w-64 h-64 text-blue-300 animate-bounce" />}
-                {wittyRemarkIndex % 4 === 2 && <Zap className="w-64 h-64 text-purple-300 animate-bounce" />}
-                {wittyRemarkIndex % 4 === 3 && <Shield className="w-64 h-64 text-cyan-300 animate-bounce" />}
-              </div>
+              <Brain className="w-64 h-64 text-white drop-shadow-[0_0_20px_rgba(255,255,255,1)] animate-bounce" />
             </div>
             
             {/* Witty Remarks */}

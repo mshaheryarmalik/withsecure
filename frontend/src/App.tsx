@@ -458,7 +458,7 @@ export default function App() {
             {/* Main Input Row */}
             <div className="w-full flex items-center gap-2 md:gap-4 px-2 md:px-6 py-2.5">
               <div className="flex items-center flex-shrink-0">
-                <ShieldLogo className="w-8 h-8 md:w-12 md:h-12" />
+                <Brain className="w-8 h-8 md:w-12 md:h-12 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]" />
               </div>
               
               {/* Main Product Input */}
@@ -501,7 +501,7 @@ export default function App() {
                   className="p-2 text-slate-200 hover:text-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed transition-all bg-slate-700/50 hover:bg-slate-600/50 rounded-lg border border-slate-600 disabled:border-slate-700"
                   title="Start Assessment"
                 >
-                  <Brain className="w-5 h-5 md:w-6 md:h-6" />
+                  <Brain className="w-5 h-5 md:w-6 md:h-6 text-white" />
                 </button>
                 
                 {/* Status Indicator */}
