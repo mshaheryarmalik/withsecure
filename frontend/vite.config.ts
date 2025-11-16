@@ -57,6 +57,6 @@
       host: '0.0.0.0',
       port: 80,
       open: true,
-      allowedHosts: 'all',
+      allowedHosts: true,
     },
   });
