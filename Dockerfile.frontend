@@ -1,0 +1,31 @@
+ARG NODE_VERSION=20-alpine
+
+FROM node:${NODE_VERSION} AS build
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+
+RUN npm ci
+
+COPY frontend/ ./
+
+ARG VITE_API_URL=http://localhost:8000
+ENV VITE_API_URL=${VITE_API_URL}
+
+RUN npm run build
+
+FROM node:${NODE_VERSION} AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    PORT=4173
+
+RUN npm install -g serve
+
+COPY --from=build /app/build ./build
+
+EXPOSE ${PORT}
+
+CMD ["serve", "-s", "build", "-l", "4173"]

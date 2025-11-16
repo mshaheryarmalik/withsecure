@@ -1,68 +1,48 @@
 import { Download, FileText, X, TrendingDown, TrendingUp, AlertTriangle, CheckCircle, Shield, ChevronDown } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { downloadHTMLReport } from '../utils/reportExport';
 import { downloadConsultantPDF } from '../utils/reportExportPDF';
+import type { CISOBrief } from '../types/api';
+import { buildReportExportPayload, clampScore, deriveAssessmentMetrics } from '../utils/assessmentMetrics';
 
 interface ReportViewProps {
-  query: string;
+  assessment: CISOBrief;
   onClose: () => void;
 }
 
-export function ReportView({ query, onClose }: ReportViewProps) {
+export function ReportView({ assessment, onClose }: ReportViewProps) {
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
-  // Mock data for visualizations
-  const vulnerabilityData = [
-    { name: 'Critical', count: 3, color: '#EF4444' },
-    { name: 'High', count: 8, color: '#F59E0B' },
-    { name: 'Medium', count: 9, color: '#06B6D4' },
-    { name: 'Low', count: 3, color: '#10B981' }
-  ];
+  const metrics = useMemo(() => deriveAssessmentMetrics(assessment), [assessment]);
 
-  const securityScoreData = [
-    { category: 'Vulnerability Management', score: 65 },
-    { category: 'Patch Response', score: 72 },
-    { category: 'Compliance', score: 78 },
-    { category: 'Vendor Trust', score: 80 },
-    { category: 'Community Support', score: 85 },
-    { category: 'Documentation', score: 90 }
-  ];
-
-  const trendData = [
-    { month: 'Jan', vulnerabilities: 15, patches: 12 },
-    { month: 'Feb', vulnerabilities: 18, patches: 16 },
-    { month: 'Mar', vulnerabilities: 23, patches: 20 },
-    { month: 'Apr', vulnerabilities: 20, patches: 22 },
-    { month: 'May', vulnerabilities: 17, patches: 18 },
-    { month: 'Jun', vulnerabilities: 23, patches: 19 }
-  ];
-
+  const vulnerabilityData = metrics.vulnerabilityData;
   const complianceData = [
-    { name: 'Met', value: 78, color: '#10B981' },
-    { name: 'Gap', value: 22, color: '#EF4444' }
+    { name: 'Met', value: metrics.complianceScore, color: '#10B981' },
+    { name: 'Gap', value: Math.max(0, 100 - metrics.complianceScore), color: '#EF4444' },
   ];
+
+  const trendData = assessment.cve_summary.recent_cves.slice(0, 8).map((cve) => ({
+    name: cve.cve_id,
+    cvss: cve.cvss_score ?? 0,
+    severity: cve.severity,
+  }));
+
+  const downloadData = useMemo(
+    () => buildReportExportPayload(assessment, assessment.entity.product_name),
+    [assessment],
+  );
 
   const handleDownload = (format: 'html' | 'pdf') => {
-    const reportData = {
-      query,
-      trustScore: 67,
-      criticalCVEs: 3,
-      compliance: 78,
-      patchResponse: '14d',
-      vulnerabilityData,
-      securityScoreData,
-      generatedDate: new Date().toLocaleString()
-    };
-
     setShowDownloadMenu(false);
-    
     if (format === 'html') {
-      downloadHTMLReport(reportData);
+      downloadHTMLReport(downloadData);
     } else if (format === 'pdf') {
-      downloadConsultantPDF(reportData);
+      downloadConsultantPDF(downloadData);
     }
   };
+
+  const totalVulnerabilities = vulnerabilityData.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-6">
@@ -75,7 +55,9 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             </div>
             <div>
               <h2 className="text-lg md:text-xl text-[rgb(255,255,255)]">Security Assessment Report</h2>
-              <p className="text-xs md:text-sm text-slate-400 font-[Inter]">{query}</p>
+              <p className="text-xs md:text-sm text-slate-400 font-[Inter]">
+                {assessment.entity.product_name} · {assessment.entity.vendor_name}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto relative">
@@ -91,12 +73,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               </button>
               {showDownloadMenu && (
                 <>
-                  {/* Backdrop to close dropdown */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowDownloadMenu(false)}
-                  ></div>
-                  {/* Dropdown Menu */}
+                  <div className="fixed inset-0 z-40" onClick={() => setShowDownloadMenu(false)}></div>
                   <div className="absolute right-0 top-full mt-2 bg-gradient-to-br from-slate-800 to-slate-900 backdrop-blur-sm border border-slate-700 rounded-lg shadow-2xl shadow-slate-900/50 z-50 overflow-hidden min-w-[200px]">
                     <button
                       onClick={() => handleDownload('html')}
@@ -139,31 +116,45 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Executive Summary
             </h3>
+            <p className="text-sm text-slate-300 mb-3 font-[Inter] leading-relaxed">
+              {assessment.description}
+            </p>
+            <p className="text-xs text-slate-400 mb-4 font-mono leading-relaxed">
+              {assessment.usage}
+            </p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
               <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-3 md:p-4 hover:border-cyan-500/40 transition-all">
                 <div className="text-xs md:text-sm text-cyan-400 mb-1">Trust Score</div>
-                <div className="text-3xl md:text-4xl text-cyan-300 mb-2">67</div>
-                <div className="text-xs text-slate-400 font-[Inter]">Moderate Risk</div>
+                <div className="text-3xl md:text-4xl text-cyan-300 mb-2">{clampScore(assessment.trust_score)}</div>
+                <div className="text-xs text-slate-400 font-[Inter]">
+                  {assessment.confidence.toUpperCase()} confidence
+                </div>
               </div>
               <div className="bg-gradient-to-br from-red-900/30 to-red-800/30 backdrop-blur-sm border border-red-500/20 rounded-lg p-3 md:p-4 hover:border-red-500/40 transition-all">
                 <div className="text-xs md:text-sm text-red-400 mb-1">Critical CVEs</div>
-                <div className="text-3xl md:text-4xl text-red-300 mb-2">3</div>
+                <div className="text-3xl md:text-4xl text-red-300 mb-2">
+                  {assessment.cve_summary.critical_count}
+                </div>
                 <div className="flex items-center gap-1 text-xs text-red-400">
                   <AlertTriangle className="w-3 h-3" />
-                  <span>Immediate Action</span>
+                  <span>{assessment.cve_summary.trend}</span>
                 </div>
               </div>
               <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/30 backdrop-blur-sm border border-amber-500/20 rounded-lg p-3 md:p-4 hover:border-amber-500/40 transition-all">
                 <div className="text-xs md:text-sm text-amber-400 mb-1">Compliance</div>
-                <div className="text-3xl md:text-4xl text-amber-300 mb-2">78%</div>
-                <div className="text-xs text-slate-400">SOC 2 Coverage</div>
+                <div className="text-3xl md:text-4xl text-amber-300 mb-2">
+                  {metrics.complianceScore}%
+                </div>
+                <div className="text-xs text-slate-400">
+                  SOC 2 status: {assessment.compliance.soc2_status || 'Unknown'}
+                </div>
               </div>
               <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 backdrop-blur-sm border border-green-500/20 rounded-lg p-3 md:p-4 hover:border-green-500/40 transition-all">
                 <div className="text-xs md:text-sm text-green-400 mb-1">Patch Response</div>
-                <div className="text-3xl md:text-4xl text-green-300 mb-2">14d</div>
+                <div className="text-3xl md:text-4xl text-green-300 mb-2">{metrics.patchResponse}</div>
                 <div className="flex items-center gap-1 text-xs text-green-400">
                   <CheckCircle className="w-3 h-3" />
-                  <span>Active Support</span>
+                  <span>Deployment controls evaluated</span>
                 </div>
               </div>
             </div>
@@ -182,12 +173,12 @@ export function ReportView({ query, onClose }: ReportViewProps) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                   <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} />
                   <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1e293b', 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
                       border: '1px solid #334155',
                       borderRadius: '8px',
-                      color: '#e2e8f0'
+                      color: '#e2e8f0',
                     }}
                   />
                   <Bar dataKey="count" radius={[8, 8, 0, 0]}>
@@ -206,17 +197,17 @@ export function ReportView({ query, onClose }: ReportViewProps) {
                 Security Score Breakdown
               </h4>
               <ResponsiveContainer width="100%" height={250}>
-                <RadarChart data={securityScoreData}>
+                <RadarChart data={metrics.securityScoreData}>
                   <PolarGrid stroke="#334155" />
                   <PolarAngleAxis dataKey="category" tick={{ fontSize: 9, fill: '#94a3b8' }} />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#334155" />
                   <Radar name="Score" dataKey="score" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.6} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1e293b', 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
                       border: '1px solid #334155',
                       borderRadius: '8px',
-                      color: '#e2e8f0'
+                      color: '#e2e8f0',
                     }}
                   />
                 </RadarChart>
@@ -227,26 +218,23 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
               <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
-                6-Month Vulnerability Trend
+                Recent CVE Scores
               </h4>
               <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={trendData}>
+                <LineChart data={trendData.length ? trendData : [{ name: 'N/A', cvss: 0 }] }>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="month" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1e293b', 
+                  <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} domain={[0, 10]} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
                       border: '1px solid #334155',
                       borderRadius: '8px',
-                      color: '#e2e8f0'
+                      color: '#e2e8f0',
                     }}
                   />
-                  <Legend 
-                    wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }}
-                  />
-                  <Line type="monotone" dataKey="vulnerabilities" stroke="#EF4444" strokeWidth={2} name="Vulnerabilities" />
-                  <Line type="monotone" dataKey="patches" stroke="#10B981" strokeWidth={2} name="Patches Released" />
+                  <Legend wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
+                  <Line type="monotone" dataKey="cvss" stroke="#EF4444" strokeWidth={2} name="CVSS Score" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -266,19 +254,18 @@ export function ReportView({ query, onClose }: ReportViewProps) {
                     labelLine={false}
                     label={({ name, value }) => `${name}: ${value}%`}
                     outerRadius={80}
-                    fill="#8884d8"
                     dataKey="value"
                   >
                     {complianceData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: '#1e293b', 
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1e293b',
                       border: '1px solid #334155',
                       borderRadius: '8px',
-                      color: '#e2e8f0'
+                      color: '#e2e8f0',
                     }}
                   />
                 </PieChart>
@@ -296,22 +283,30 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               <div className="flex items-start gap-3 p-3 md:p-4 bg-red-950/30 backdrop-blur-sm border-l-4 border-red-500 rounded-lg hover:bg-red-950/50 transition-all">
                 <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-xs md:text-sm text-red-300">Critical: CVE-2021-44228 (Log4Shell)</div>
-                  <div className="text-xs text-slate-400 mt-1">CVSS 10.0 - Remote Code Execution vulnerability. Immediate patching required.</div>
+                  <div className="text-xs md:text-sm text-red-300">
+                    {assessment.cve_summary.critical_count} critical CVEs identified
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    Includes {assessment.cve_summary.cisa_kev_count} CISA KEV records · {assessment.cve_summary.trend}
+                  </div>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 md:p-4 bg-amber-950/30 backdrop-blur-sm border-l-4 border-amber-500 rounded-lg hover:bg-amber-950/50 transition-all">
                 <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-xs md:text-sm text-amber-300">Compliance Gaps Identified</div>
-                  <div className="text-xs text-slate-400 mt-1">Missing controls in incident response and vendor management areas.</div>
+                  <div className="text-xs md:text-sm text-amber-300">Compliance posture requires follow-up</div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {assessment.compliance.iso_certifications.length} ISO certificates · SOC 2 status {assessment.compliance.soc2_status || 'unknown'}
+                  </div>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 md:p-4 bg-green-950/30 backdrop-blur-sm border-l-4 border-green-500 rounded-lg hover:bg-green-950/50 transition-all">
                 <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-xs md:text-sm text-green-300">Active Vendor Support</div>
-                  <div className="text-xs text-slate-400 mt-1">Average patch response time of 14 days. Regular security updates maintained.</div>
+                  <div className="text-xs md:text-sm text-green-300">Vendor transparency & documentation</div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {assessment.vendor_reputation.security_page_found ? 'Security page verified' : 'Security page not found'} · {assessment.vendor_reputation.claimed_certifications.length} claimed certifications
+                  </div>
                 </div>
               </div>
             </div>
@@ -327,20 +322,30 @@ export function ReportView({ query, onClose }: ReportViewProps) {
               <ol className="space-y-3 text-xs md:text-sm text-slate-300">
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">1</span>
-                  <span><strong className="text-cyan-400">Immediate:</strong> Upgrade to version 2.17.1 or later to address critical vulnerabilities (CVE-2021-44228, CVE-2021-45046)</span>
+                  <span>
+                    <strong className="text-cyan-400">Immediate:</strong> Address {assessment.cve_summary.critical_count} critical vulnerabilities and review KEV-listed items.
+                  </span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">2</span>
-                  <span><strong className="text-cyan-400">Short-term:</strong> Implement additional monitoring and detection rules for exploitation attempts</span>
+                  <span>
+                    <strong className="text-cyan-400">Short-term:</strong> Strengthen compliance documentation for {assessment.compliance.iso_certifications.length || 'key'} control areas and validate vendor representations.
+                  </span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">3</span>
-                  <span><strong className="text-cyan-400">Medium-term:</strong> Review and address compliance gaps in incident response procedures</span>
+                  <span>
+                    <strong className="text-cyan-400">Medium-term:</strong> Review incident response readiness addressing {assessment.incidents.breach_count} historical breaches and {assessment.incidents.incidents.length} recorded incidents.
+                  </span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">4</span>
-                  <span><strong className="text-cyan-400">Consider alternatives:</strong> Evaluate Logback or SLF4J Simple as potential replacements with better security profiles</span>
-                </li>
+                {assessment.safer_alternatives.length > 0 && (
+                  <li className="flex items-start gap-3">
+                    <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">4</span>
+                    <span>
+                      <strong className="text-cyan-400">Consider alternatives:</strong> {assessment.safer_alternatives.map((alt) => alt.product_name).join(', ')}
+                    </span>
+                  </li>
+                )}
               </ol>
             </div>
           </div>
@@ -349,7 +354,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
         {/* Footer */}
         <div className="border-t border-cyan-500/20 px-4 md:px-6 py-3 bg-slate-900/50 backdrop-blur-sm text-xs text-slate-400">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Generated on {new Date().toLocaleString()}</span>
+            <span>Generated on {new Date(assessment.assessment_timestamp).toLocaleString()}</span>
             <span className="text-cyan-400">CISO Security Assessor v1.0</span>
           </div>
         </div>

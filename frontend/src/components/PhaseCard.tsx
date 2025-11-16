@@ -11,6 +11,7 @@ interface PhaseCardProps {
   };
   position: { x: number; y: number };
   onClick: () => void;
+  isProcessing?: boolean;
 }
 
 const phaseIcons = {
@@ -20,7 +21,7 @@ const phaseIcons = {
   phase_4: Brain,
 };
 
-export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
+export function PhaseCard({ phase, position, onClick, isProcessing = false }: PhaseCardProps) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,6 +128,8 @@ export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
   };
 
   const Icon = phaseIcons[phase.id as keyof typeof phaseIcons] || Shield;
+  const shouldShowProcessingGlow =
+    isProcessing && (phase.status === 'active' || phase.status === 'pending');
 
   const getStatusColor = () => {
     switch (phase.status) {
@@ -185,6 +188,11 @@ export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
           ref={canvasRef}
           className="absolute inset-0 pointer-events-none opacity-80"
         />
+
+        {/* Processing glow overlay */}
+        {shouldShowProcessingGlow && (
+          <div className="processing-glow-border"></div>
+        )}
 
         {/* Enhanced glass effect overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-slate-700/5 via-transparent to-slate-900/10 pointer-events-none group-hover:from-slate-600/10 group-hover:to-slate-800/15 transition-all duration-500"></div>

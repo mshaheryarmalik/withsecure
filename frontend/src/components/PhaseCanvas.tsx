@@ -21,9 +21,10 @@ interface PhaseCanvasProps {
   onClearAnalysis?: () => void;
   onDownloadPDF?: () => void;
   currentQuery?: string;
+  isProcessing?: boolean;
 }
 
-export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis, onClearAnalysis, onDownloadPDF, currentQuery }: PhaseCanvasProps) {
+export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis, onClearAnalysis, onDownloadPDF, currentQuery, isProcessing = false }: PhaseCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number>();
@@ -348,6 +349,7 @@ export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis
   ];
 
   return (
+    <>
     <div 
       ref={containerRef} 
       className="relative w-full h-full bg-black overflow-hidden"
@@ -376,6 +378,7 @@ export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis
             phase={phase}
             position={positions[index] || { x: 50, y: 50 }}
             onClick={() => setSelectedPhase(phase)}
+            isProcessing={isProcessing}
           />
         ))}
       </div>
@@ -428,5 +431,58 @@ export function PhaseCanvas({ phases, reportReady, onViewReport, onRerunAnalysis
         />
       )}
     </div>
+    <style>{`
+      @keyframes phaseEdgePulse {
+        0% {
+          opacity: 0.35;
+          box-shadow:
+            0 0 12px rgba(14, 165, 233, 0.18),
+            0 0 20px rgba(59, 130, 246, 0.08);
+        }
+        50% {
+          opacity: 0.85;
+          box-shadow:
+            0 0 24px rgba(34, 211, 238, 0.35),
+            0 0 40px rgba(6, 182, 212, 0.25);
+        }
+        100% {
+          opacity: 0.35;
+          box-shadow:
+            0 0 12px rgba(14, 165, 233, 0.18),
+            0 0 20px rgba(59, 130, 246, 0.08);
+        }
+      }
+
+      .processing-glow-border {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: 0.25rem;
+        border: 1px solid rgba(6, 182, 212, 0.35);
+        background: linear-gradient(
+          135deg,
+          rgba(6, 182, 212, 0.12),
+          rgba(59, 130, 246, 0.16)
+        );
+        mix-blend-mode: screen;
+        animation: phaseEdgePulse 2.4s ease-in-out infinite;
+        z-index: 8;
+      }
+
+      .processing-glow-border::after {
+        content: '';
+        position: absolute;
+        inset: -12px;
+        border-radius: 0.5rem;
+        background: radial-gradient(
+          circle,
+          rgba(14, 165, 233, 0.25) 0%,
+          rgba(14, 165, 233, 0) 70%
+        );
+        filter: blur(12px);
+        opacity: 0.8;
+      }
+    `}</style>
+    </>
   );
 }

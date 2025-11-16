@@ -304,6 +304,12 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         product_name = state.entity.get("product_name") or "Unknown"
         vendor_name = state.entity.get("vendor_name", "")
         website = state.entity.get("website", "")
+        technology_stack = state.entity.get("technology_stack", [])
+        technology_note = state.entity.get("technology_note")
+        homepage_title = state.entity.get("homepage_title", "")
+        homepage_description = state.entity.get("homepage_description", "")
+        homepage_content = state.entity.get("homepage_content", "")
+        input_type = state.entity.get("input_type")
         
         # Safety check for None or empty product name
         if not product_name or product_name == "Unknown":
@@ -319,6 +325,8 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
                 "current_step": "Classification Complete"
             }
         
+        if input_type == "url":
+            status_update.append("  🌐 URL input detected - enriching classification with homepage insights and detected technologies.")
         status_update.append(f"  🎯 Analyzing product: '{product_name}'")
         status_update.append(f"  🤖 Running LLM-based taxonomy classification...")
         status_update.append(f"  📋 Checking against {len(SOFTWARE_CATEGORIES)} Gartner software categories...")
@@ -353,6 +361,17 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             context_info += f"- Vendor: {vendor_name}\n"
         if website:
             context_info += f"- Website: {website}\n"
+        if homepage_title:
+            context_info += f"- Homepage Title: {homepage_title[:140]}\n"
+        if homepage_description:
+            context_info += f"- Homepage Description: {homepage_description[:200]}\n"
+        if homepage_content:
+            homepage_snippet = " ".join(homepage_content.split())
+            context_info += f"- Homepage Content Snippet: {homepage_snippet[:600]}\n"
+        if technology_stack:
+            context_info += f"- Detected Technology Stack: {', '.join(technology_stack[:8])}\n"
+        elif technology_note:
+            context_info += f"- Technology Stack Note: {technology_note}\n"
         
         prompt_text += context_info
         

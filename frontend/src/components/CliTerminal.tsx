@@ -9,7 +9,7 @@ interface CliTerminalProps {
     timestamp: string;
     nodeLabel: string;
     message: string;
-    status: 'active' | 'completed' | 'error' | 'info';
+    status: 'active' | 'completed' | 'error' | 'info' | 'warning';
   }[];
 }
 
@@ -41,6 +41,8 @@ export function CliTerminal({ isOpen, onClose, logs }: CliTerminalProps) {
         return '[ OK ]';
       case 'error':
         return '[ERROR]';
+      case 'warning':
+        return '[WARN]';
       default:
         return '[LOG]';
     }
@@ -54,6 +56,8 @@ export function CliTerminal({ isOpen, onClose, logs }: CliTerminalProps) {
         return 'text-green-400';
       case 'error':
         return 'text-red-400';
+      case 'warning':
+        return 'text-amber-400';
       default:
         return 'text-slate-400';
     }
@@ -101,7 +105,7 @@ export function CliTerminal({ isOpen, onClose, logs }: CliTerminalProps) {
         <div className="mb-4 text-slate-500">
           <div>$ ciso-security-assessor --version</div>
           <div className="text-slate-600">CISO Security Assessor v1.0.0</div>
-          <div className="text-slate-600">System: Figma Make | Node: v18.0.0</div>
+          <div className="text-slate-600">System: Google Cloud Deployed Instance | Node: v18.0.0</div>
           <div className="mt-2 text-slate-500">$ ciso-security-assessor start --verbose</div>
         </div>
 

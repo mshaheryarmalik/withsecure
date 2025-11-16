@@ -74,6 +74,21 @@ python apps.py
 uvicorn apps:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
+#### Option C: Docker Compose (Full Stack)
+
+Use Docker Compose to spin up the backend API and the frontend UI together. Ensure Docker Desktop (or the Docker Compose plugin) is installed and that your `.env` file contains the required API keys (`GOOGLE_API_KEY`, etc.).
+
+```bash
+docker compose up --build
+```
+
+Services exposed locally:
+
+- Frontend UI → http://localhost:5173
+- Backend API → http://localhost:8000 (health check at `/health`)
+
+Run `docker compose down` to stop the stack when you're done.
+
 **Test the API:**
 ```bash
 # Streaming mode (recommended) - shows real-time progress

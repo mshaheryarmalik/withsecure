@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
+from bs4 import BeautifulSoup
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -20,6 +21,158 @@ from ._utils import (
     create_tavily_client,
     VIRUSTOTAL_API_URL,
 )
+
+try:
+    import builtwith as builtwith_client
+except ImportError:  # pragma: no cover - optional dependency
+    builtwith_client = None
+
+
+def _fetch_homepage_context(url: str) -> Dict[str, Any]:
+    """Fetch homepage metadata and technology stack information for a URL."""
+    context: Dict[str, Any] = {
+        "homepage_title": "",
+        "homepage_description": "",
+        "homepage_content": "",
+        "technology_stack": [],
+        "technology_note": None,
+    }
+    
+    normalized_url = url
+    if not normalized_url.startswith(("http://", "https://")):
+        normalized_url = f"https://{normalized_url}"
+    normalized_url = normalized_url.replace("https//", "https://").replace("http//", "http://")
+    
+    parsed = urlparse(normalized_url)
+    domain = parsed.netloc or parsed.path
+    
+    # Fetch homepage HTML content
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/123.0.0.0 Safari/537.36"
+            )
+        }
+        response = requests.get(
+            normalized_url,
+            headers=headers,
+            timeout=10,
+            allow_redirects=True,
+        )
+        
+        if response.status_code == 200:
+            content_type = response.headers.get("Content-Type", "")
+            if "text/html" in content_type:
+                soup = BeautifulSoup(response.content, "html.parser")
+                
+                title = (soup.title.string if soup.title else "") or ""
+                context["homepage_title"] = title.strip()
+                
+                description_tag = soup.find("meta", attrs={"name": "description"})
+                if description_tag and description_tag.get("content"):
+                    context["homepage_description"] = description_tag["content"].strip()
+                else:
+                    og_description = soup.find("meta", property="og:description")
+                    if og_description and og_description.get("content"):
+                        context["homepage_description"] = og_description["content"].strip()
+                
+                paragraphs = soup.find_all("p")
+                collected: List[str] = []
+                char_budget = 1200
+                
+                for p in paragraphs:
+                    text = p.get_text(" ", strip=True)
+                    if not text:
+                        continue
+                    collected.append(text)
+                    if sum(len(item) for item in collected) >= char_budget:
+                        break
+                
+                if collected:
+                    context["homepage_content"] = " ".join(collected)[:1500]
+        else:
+            context["homepage_note"] = f"Homepage request returned status {response.status_code}"
+    except Exception as exc:  # pragma: no cover - network variability
+        context["homepage_error"] = f"Homepage fetch failed: {exc}"
+    
+    # Fetch technology stack
+    technology_names: List[str] = []
+    tech_note: Optional[str] = None
+    api_key = os.getenv("BUILTWITH_API_KEY")
+    
+    if api_key:
+        try:
+            tech_response = requests.get(
+                "https://api.builtwith.com/v21/api.json",
+                params={"KEY": api_key, "LOOKUP": domain},
+                timeout=10,
+            )
+            if tech_response.status_code == 200:
+                tech_data = tech_response.json()
+                results = tech_data.get("Results", [])
+                
+                for result_entry in results:
+                    result = result_entry.get("Result", {})
+                    
+                    # Top-level technologies
+                    for tech in result.get("Technologies", []) or []:
+                        name = tech.get("Name")
+                        if not name:
+                            continue
+                        categories = [
+                            cat.get("Name")
+                            for cat in tech.get("Categories", []) or []
+                            if cat.get("Name")
+                        ]
+                        label = f"{name} ({', '.join(categories)})" if categories else name
+                        technology_names.append(label)
+                    
+                    # Technologies nested under paths/subdomains
+                    for path in result.get("Paths", []) or []:
+                        for tech in path.get("Technologies", []) or []:
+                            name = tech.get("Name")
+                            if not name:
+                                continue
+                            categories = [
+                                cat.get("Name")
+                                for cat in tech.get("Categories", []) or []
+                                if cat.get("Name")
+                            ]
+                            label = f"{name} ({', '.join(categories)})" if categories else name
+                            technology_names.append(label)
+            else:
+                tech_note = f"BuiltWith API returned status {tech_response.status_code}"
+        except Exception as exc:  # pragma: no cover - network variability
+            tech_note = f"BuiltWith API error: {exc}"
+    elif builtwith_client:
+        try:
+            parsed_stack = builtwith_client.parse(normalized_url)
+            for category, names in parsed_stack.items():
+                for tech in names:
+                    label = f"{tech} ({category})" if category else tech
+                    technology_names.append(label)
+        except Exception as exc:  # pragma: no cover - optional dependency
+            tech_note = f"BuiltWith library error: {exc}"
+    else:
+        tech_note = "BuiltWith integration unavailable (set BUILTWITH_API_KEY or install builtwith package)"
+    
+    # Deduplicate and trim technology stack
+    if technology_names:
+        deduped: List[str] = []
+        seen = set()
+        for item in technology_names:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+        context["technology_stack"] = deduped[:12]
+    if tech_note:
+        context["technology_note"] = tech_note
+    
+    return context
 
 
 def detect_input_type(input_str: str) -> InputType:
@@ -254,6 +407,7 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
         tavily_api_key = os.getenv("TAVILY_API_KEY")
         page_content = ""
         page_title = ""
+        meta_description = ""
         
         if tavily_api_key:
             try:
@@ -281,6 +435,24 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
                 page_content = f"Could not fetch page via Tavily: {str(e)}"
         else:
             page_content = "Tavily API key not configured"
+
+        homepage_context = _fetch_homepage_context(url)
+        if not page_title:
+            page_title = homepage_context.get("homepage_title", "")
+        if not meta_description:
+            meta_description = homepage_context.get("homepage_description", "")
+        
+        homepage_snippet = homepage_context.get("homepage_content", "")
+        if homepage_snippet:
+            if page_content and "Tavily API key not configured" not in page_content:
+                combined = f"{page_content} {homepage_snippet}"
+                page_content = combined[:800]
+            else:
+                page_content = homepage_snippet[:800]
+        
+        tech_stack = homepage_context.get("technology_stack", [])
+        technology_note = homepage_context.get("technology_note")
+        technology_stack_text = ", ".join(tech_stack[:10]) if tech_stack else (technology_note or "Not available")
         
         # Use LLM with page data
         model = init_chat_model(
@@ -296,7 +468,9 @@ Domain: {domain}
 
 PAGE DATA:
 Title: {page_title}
+Description: {meta_description}
 Content Preview: {page_content[:500]}
+Technology Stack: {technology_stack_text}
 
 Based on this information, determine:
 1. What is the official product name? (e.g., "Figma" not "Figma - The Collaborative...")
@@ -376,7 +550,14 @@ IMPORTANT:
             "file_reputation": None,
             "confidence": confidence,
             "reasoning": entity_data.get("reasoning", "LLM-based URL analysis"),
-            "product_type": entity_data.get("product_type", "Unknown")
+            "product_type": entity_data.get("product_type", "Unknown"),
+            "homepage_title": homepage_context.get("homepage_title", ""),
+            "homepage_description": homepage_context.get("homepage_description", ""),
+            "homepage_content": homepage_context.get("homepage_content", ""),
+            "homepage_note": homepage_context.get("homepage_note"),
+            "homepage_error": homepage_context.get("homepage_error"),
+            "technology_stack": tech_stack,
+            "technology_note": technology_note,
         }
         
     except Exception as e:
@@ -404,7 +585,14 @@ IMPORTANT:
             "sha1_hash": None,
             "file_reputation": None,
             "confidence": ConfidenceLevel.LOW.value,
-            "error": f"URL resolution failed: {str(e)}"
+            "error": f"URL resolution failed: {str(e)}",
+            "homepage_title": "",
+            "homepage_description": "",
+            "homepage_content": "",
+            "homepage_note": None,
+            "homepage_error": f"URL resolution failed: {str(e)}",
+            "technology_stack": [],
+            "technology_note": "BuiltWith data unavailable due to resolution failure",
         }
 
 
@@ -728,18 +916,34 @@ def resolve_entity_complete(
             entity["file_reputation"] = vt_result["file_reputation"]
             entity["file_type"] = vt_result.get("file_type")
     
-    if website and not (product_name and vendor_name):
-        # URL provides product + vendor via LLM analysis
-        url_result = _resolve_from_url(website)
+    url_analysis_result: Optional[Dict[str, Any]] = None
+    if website:
+        # URL provides product + vendor via LLM analysis and homepage context
+        url_analysis_result = _resolve_from_url(website)
         
-        if not product_name and url_result.get("product_name"):
-            entity["product_name"] = url_result["product_name"]
+        # Persist homepage context and technology stack for downstream consumers
+        entity["technology_stack"] = url_analysis_result.get("technology_stack", [])
+        entity["technology_note"] = url_analysis_result.get("technology_note")
+        entity["homepage_title"] = url_analysis_result.get("homepage_title", "")
+        entity["homepage_description"] = url_analysis_result.get("homepage_description", "")
+        entity["homepage_content"] = url_analysis_result.get("homepage_content", "")
+        if url_analysis_result.get("homepage_note"):
+            entity["homepage_note"] = url_analysis_result.get("homepage_note")
+        if url_analysis_result.get("homepage_error"):
+            entity["homepage_error"] = url_analysis_result.get("homepage_error")
+        if url_analysis_result.get("product_type"):
+            entity["product_type"] = url_analysis_result.get("product_type")
+        if url_analysis_result.get("original_name"):
+            entity.setdefault("original_name", url_analysis_result.get("original_name"))
+        
+        if not entity["product_name"] and url_analysis_result.get("product_name"):
+            entity["product_name"] = url_analysis_result["product_name"]
             entity["sources"]["product_name"] = "url_analysis"
             entity["confidence"]["product_name"] = 0.9
             entity["resolved_fields"].append("product_name")
         
-        if not vendor_name and url_result.get("vendor_name"):
-            entity["vendor_name"] = url_result["vendor_name"]
+        if not entity["vendor_name"] and url_analysis_result.get("vendor_name"):
+            entity["vendor_name"] = url_analysis_result["vendor_name"]
             entity["sources"]["vendor_name"] = "url_analysis"
             entity["confidence"]["vendor_name"] = 0.9
             entity["resolved_fields"].append("vendor_name")
@@ -790,7 +994,7 @@ def resolve_entity_complete(
     
     # Validate URL product matches provided product
     if website and product_name and "product_name" in entity["input_fields"]:
-        url_result = _resolve_from_url(website)
+        url_result = url_analysis_result or _resolve_from_url(website)
         url_product = url_result.get("product_name")
         if url_product and not _names_match(url_product, product_name):
             entity["conflicts"].append({
@@ -802,7 +1006,7 @@ def resolve_entity_complete(
     
     # Similar validation for vendor if needed
     if website and vendor_name and "vendor_name" in entity["input_fields"]:
-        url_result = _resolve_from_url(website)
+        url_result = url_analysis_result or _resolve_from_url(website)
         url_vendor = url_result.get("vendor_name")
         if url_vendor and not _names_match(url_vendor, vendor_name):
             entity["conflicts"].append({
@@ -839,6 +1043,7 @@ def resolve_entity_complete(
         "vendor_name": entity["vendor_name"] or "Unknown",
         "website": entity["website"],
         "sha1_hash": entity["sha1_hash"],
+        "original_name": entity.get("original_name"),
         
         # Metadata
         "verified": overall_confidence > 0.7,
@@ -848,6 +1053,14 @@ def resolve_entity_complete(
         # Additional data
         "file_reputation": entity.get("file_reputation"),
         "file_type": entity.get("file_type"),
+        "product_type": entity.get("product_type"),
+        "technology_stack": entity.get("technology_stack", []),
+        "technology_note": entity.get("technology_note"),
+        "homepage_title": entity.get("homepage_title", ""),
+        "homepage_description": entity.get("homepage_description", ""),
+        "homepage_content": entity.get("homepage_content", ""),
+        "homepage_note": entity.get("homepage_note"),
+        "homepage_error": entity.get("homepage_error"),
         
         # Detailed tracking (for debugging/validation)
         "resolution_details": {

@@ -1,73 +1,282 @@
-interface VulnerabilityData {
-  name: string;
-  count: number;
-  color: string;
-}
+import type { ReportExportPayload } from "./assessmentMetrics";
 
-interface SecurityScoreData {
-  category: string;
-  score: number;
-}
+const escapeHtml = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
 
-interface ReportData {
-  query: string;
-  trustScore: number;
-  criticalCVEs: number;
-  compliance: number;
-  patchResponse: string;
-  vulnerabilityData: VulnerabilityData[];
-  securityScoreData: SecurityScoreData[];
-  generatedDate: string;
-}
+const formatDate = (value?: string): string => {
+  if (!value) {
+    return "Not provided";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return escapeHtml(value);
+  }
+  return escapeHtml(date.toLocaleDateString());
+};
 
-export function generateConsultantPDFReport(data: ReportData): string {
-  const totalVulns = data.vulnerabilityData.reduce((sum, v) => sum + v.count, 0);
-  
+const classifyRisk = (trustScore: number) => {
+  if (trustScore >= 80) {
+    return { label: "Low Risk", note: "Risk posture aligns with acceptable thresholds." };
+  }
+  if (trustScore >= 60) {
+    return { label: "Moderate Risk", note: "Targeted remediation required to reduce exposure." };
+  }
+  return { label: "High Risk", note: "Immediate action required to mitigate systemic vulnerabilities." };
+};
+
+const severityClass = (severity: string) => {
+  const normalized = severity?.toLowerCase() || "";
+  if (normalized.includes("critical")) {
+    return "critical";
+  }
+  if (normalized.includes("high")) {
+    return "high";
+  }
+  if (normalized.includes("medium")) {
+    return "medium";
+  }
+  if (normalized.includes("low")) {
+    return "low";
+  }
+  return "info";
+};
+
+const yesNoBadge = (value: boolean | null, yesText: string, noText: string) => {
+  if (value === true) {
+    return `<span class="badge badge-positive">${escapeHtml(yesText)}</span>`;
+  }
+  if (value === false) {
+    return `<span class="badge badge-negative">${escapeHtml(noText)}</span>`;
+  }
+  return `<span class="badge badge-neutral">Not reported</span>`;
+};
+
+const patchResponseLabel = (patchResponse: string) => {
+  if (!patchResponse || patchResponse.trim() === "" || patchResponse === "N/A") {
+    return "Not reported";
+  }
+  return patchResponse;
+};
+
+export function generateConsultantPDFReport(data: ReportExportPayload): string {
+  const totalVulns = data.vulnerabilityData.reduce((sum, v) => sum + Math.max(0, v.count), 0);
+  const criticalCount = data.vulnerabilityData.find((item) => item.name === "Critical")?.count ?? 0;
+  const highCount = data.vulnerabilityData.find((item) => item.name === "High")?.count ?? 0;
+  const risk = classifyRisk(data.trustScore);
+  const topFindings = data.recentCves.slice(0, 5);
+  const remainingCves = data.recentCves.slice(0, 12);
+  const patchLabel = patchResponseLabel(data.patchResponse);
+  const complianceFlags = data.complianceDetails;
+
+  const findingsHtml =
+    topFindings.length > 0
+      ? topFindings
+          .map((finding) => {
+            const sevClass = severityClass(finding.severity);
+            const sevLabel = escapeHtml(finding.severity || "Unknown");
+            const cvss = typeof finding.cvss === "number" ? finding.cvss.toFixed(1) : "N/A";
+            return `<div class="finding finding-${sevClass}">
+        <div class="finding-title">
+          <span class="finding-severity finding-${sevClass}-badge">${sevLabel}</span>
+          ${escapeHtml(finding.id)}
+        </div>
+        <div class="finding-meta">
+          <span class="finding-cvss">CVSS ${escapeHtml(cvss)}</span>
+          ${finding.inCisaKev ? '<span class="badge badge-outline">CISA KEV</span>' : ""}
+          ${finding.publishedDate ? `<span class="badge badge-muted">Published ${formatDate(finding.publishedDate)}</span>` : ""}
+        </div>
+        <p class="finding-text">${escapeHtml(finding.description || "No public description provided.")}</p>
+      </div>`;
+          })
+          .join("")
+      : `<p class="no-data">No high priority CVEs were returned for this assessment.</p>`;
+
+  const vulnerabilityRows =
+    totalVulns > 0
+      ? data.vulnerabilityData
+          .map((vuln) => {
+            const percentage = totalVulns ? Math.round((Math.max(0, vuln.count) / totalVulns) * 100) : 0;
+            return `<tr>
+          <td><strong>${escapeHtml(vuln.name)}</strong></td>
+          <td>${escapeHtml(vuln.count)}</td>
+          <td>${percentage}%</td>
+          <td>${escapeHtml(
+            vuln.name === "Critical"
+              ? "Immediate remediation (24–48 hrs)"
+              : vuln.name === "High"
+              ? "Remediate within 30 days"
+              : vuln.name === "Medium"
+              ? "Address within 90 days"
+              : "Monitor within normal patch cadence",
+          )}</td>
+        </tr>`;
+          })
+          .join("")
+      : `<tr>
+        <td colspan="4">No vulnerabilities were reported for this vendor at the time of assessment.</td>
+      </tr>`;
+
+  const securityRows = data.securityScoreData
+    .map(
+      (item) => `<tr>
+        <td><strong>${escapeHtml(item.category)}</strong></td>
+        <td>${escapeHtml(item.score)}</td>
+        <td>${escapeHtml(
+          item.score >= 80
+            ? "Strong performance with minimal gaps observed."
+            : item.score >= 70
+            ? "Adequate controls – monitor and improve."
+            : item.score >= 60
+            ? "Moderate concerns – prioritize remediation."
+            : "Significant weaknesses detected – urgent action required.",
+        )}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const cveRows =
+    remainingCves.length > 0
+      ? remainingCves
+          .map(
+            (cve) => `<tr>
+          <td><strong>${escapeHtml(cve.id)}</strong></td>
+          <td>${typeof cve.cvss === "number" ? escapeHtml(cve.cvss.toFixed(1)) : "N/A"}</td>
+          <td><span class="finding-severity finding-${severityClass(cve.severity)}-badge">${escapeHtml(
+              cve.severity || "Unknown",
+            )}</span></td>
+          <td>${escapeHtml(cve.description || "Description not published.")}</td>
+          <td>${cve.inCisaKev ? "Yes" : "No"}</td>
+        </tr>`,
+          )
+          .join("")
+      : `<tr>
+        <td colspan="5">No CVE inventory was returned for this vendor.</td>
+      </tr>`;
+
+  const incidentRows =
+    data.incidents.length > 0
+      ? data.incidents
+          .map(
+            (incident) => `<tr>
+          <td>${formatDate(incident.date)}</td>
+          <td>${escapeHtml(incident.type)}</td>
+          <td>${escapeHtml(incident.severity)}</td>
+          <td>${escapeHtml(incident.description)}</td>
+          <td>${incident.sourceUrl ? `<a href="${escapeHtml(incident.sourceUrl)}">${escapeHtml(incident.sourceUrl)}</a>` : "—"}</td>
+        </tr>`,
+          )
+          .join("")
+      : `<tr>
+        <td colspan="5">No historical security incidents were reported.</td>
+      </tr>`;
+
+  const certificationRows =
+    complianceFlags.isoCertifications.length > 0
+      ? complianceFlags.isoCertifications
+          .map(
+            (cert) => `<tr>
+          <td>${escapeHtml(cert.certificationType)}</td>
+          <td>${escapeHtml(cert.status)}</td>
+          <td>${cert.dateIssued ? formatDate(cert.dateIssued) : "Not provided"}</td>
+          <td>${cert.expiryDate ? formatDate(cert.expiryDate) : "Not provided"}</td>
+        </tr>`,
+          )
+          .join("")
+      : `<tr>
+        <td colspan="4">No ISO or equivalent certifications were disclosed.</td>
+      </tr>`;
+
+  const alternativesList =
+    data.saferAlternatives.length > 0
+      ? data.saferAlternatives
+          .map(
+            (alt, index) => `<li>
+          <span class="alt-index">${index + 1}.</span>
+          <div class="alt-content">
+            <div class="alt-title">${escapeHtml(alt.productName)}${alt.vendorName ? ` · ${escapeHtml(alt.vendorName)}` : ""}</div>
+            ${alt.category ? `<div class="alt-meta badge badge-muted">Category: ${escapeHtml(alt.category)}</div>` : ""}
+            <p>${escapeHtml(alt.rationale)}</p>
+          </div>
+        </li>`,
+          )
+          .join("")
+      : `<li>No safer alternative recommendations were generated for this vendor.</li>`;
+
+  const citationsList =
+    data.citations.length > 0
+      ? data.citations
+          .map(
+            (citation, index) => `<li>
+          <strong>[${index + 1}] ${escapeHtml(citation.claim)}</strong><br />
+          <span class="citation-meta">${escapeHtml(citation.sourceType)} · ${escapeHtml(citation.sourceLabel)} · Accessed ${
+              citation.accessedDate ? escapeHtml(new Date(citation.accessedDate).toLocaleDateString()) : "Not provided"
+            }</span><br />
+          <a href="${escapeHtml(citation.sourceUrl)}">${escapeHtml(citation.sourceUrl)}</a>
+        </li>`,
+          )
+          .join("")
+      : `<li>No supporting citations were supplied by the assessment.</li>`;
+
+  const complianceBadges = [
+    yesNoBadge(complianceFlags.gdprCompliant, "GDPR aligned", "Not GDPR aligned"),
+    yesNoBadge(complianceFlags.ccpaCompliant, "CCPA aligned", "Not CCPA aligned"),
+    yesNoBadge(complianceFlags.hipaaCompliant, "HIPAA aligned", "Not HIPAA aligned"),
+  ].join("");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Security Assessment Report - ${data.query}</title>
+  <title>Security Assessment Report - ${escapeHtml(data.productName)}</title>
   <style>
     @page {
       size: A4 portrait;
       margin: 2cm 2.5cm 3.5cm 2.5cm;
     }
-    
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: 'Georgia', 'Times New Roman', serif;
       font-size: 10pt;
       line-height: 1.5;
       color: #000;
       background: #fff;
-      padding-bottom: 80px;
+      padding-bottom: 160px;
     }
-    
+
     /* Page structure */
     .page {
       page-break-after: always;
-      padding: 0 0 60px 0;
+      padding: 0 0 140px 0;
       position: relative;
       min-height: calc(297mm - 5.5cm);
     }
-    
+
     .page:last-child {
       page-break-after: avoid;
     }
-    
+
     /* Header styling */
     .report-header {
       border-bottom: 3px solid #000;
       padding-bottom: 20px;
       margin-bottom: 30px;
     }
-    
+
     .report-title {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 24pt;
@@ -76,7 +285,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       margin-bottom: 8px;
       text-transform: uppercase;
     }
-    
+
     .report-subtitle {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 14pt;
@@ -84,7 +293,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       color: #333;
       margin-bottom: 20px;
     }
-    
+
     .report-meta {
       display: flex;
       justify-content: space-between;
@@ -94,7 +303,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       padding-top: 10px;
       border-top: 1px solid #ccc;
     }
-    
+
     /* Executive summary box */
     .exec-summary {
       background: #f5f5f5;
@@ -102,7 +311,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       padding: 20px;
       margin-bottom: 25px;
     }
-    
+
     .exec-summary-title {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 13pt;
@@ -111,13 +320,13 @@ export function generateConsultantPDFReport(data: ReportData): string {
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    
+
     .exec-summary-text {
       font-size: 10pt;
       line-height: 1.6;
       margin-bottom: 15px;
     }
-    
+
     /* Key metrics grid */
     .metrics-grid {
       display: grid;
@@ -125,13 +334,13 @@ export function generateConsultantPDFReport(data: ReportData): string {
       gap: 15px;
       margin-bottom: 25px;
     }
-    
+
     .metric-box {
       border: 2px solid #000;
       padding: 15px;
       text-align: center;
     }
-    
+
     .metric-label {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 8pt;
@@ -140,7 +349,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       letter-spacing: 0.5px;
       margin-bottom: 8px;
     }
-    
+
     .metric-value {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 26pt;
@@ -148,13 +357,13 @@ export function generateConsultantPDFReport(data: ReportData): string {
       line-height: 1;
       margin-bottom: 5px;
     }
-    
+
     .metric-note {
       font-size: 8pt;
       color: #555;
       font-style: italic;
     }
-    
+
     /* Section headings */
     h2 {
       font-family: 'Arial', 'Helvetica', sans-serif;
@@ -167,7 +376,7 @@ export function generateConsultantPDFReport(data: ReportData): string {
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-    
+
     h3 {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 11pt;
@@ -175,27 +384,43 @@ export function generateConsultantPDFReport(data: ReportData): string {
       margin-top: 15px;
       margin-bottom: 8px;
     }
-    
+
     /* Text content */
     p {
       margin-bottom: 10px;
       text-align: justify;
     }
-    
+
     .finding {
       margin-bottom: 15px;
       padding: 12px;
       border-left: 3px solid #000;
       background: #fafafa;
     }
-    
+
+    .finding-critical {
+      border-left-color: #b91c1c;
+    }
+
+    .finding-high {
+      border-left-color: #c2410c;
+    }
+
+    .finding-medium {
+      border-left-color: #a16207;
+    }
+
+    .finding-low {
+      border-left-color: #15803d;
+    }
+
     .finding-title {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-size: 10pt;
       font-weight: 700;
       margin-bottom: 5px;
     }
-    
+
     .finding-severity {
       display: inline-block;
       padding: 2px 8px;
@@ -204,12 +429,55 @@ export function generateConsultantPDFReport(data: ReportData): string {
       margin-right: 8px;
       border: 1px solid #000;
     }
-    
+
+    .finding-critical-badge {
+      background: #fee2e2;
+      border-color: #b91c1c;
+      color: #7f1d1d;
+    }
+
+    .finding-high-badge {
+      background: #ffedd5;
+      border-color: #c2410c;
+      color: #7c2d12;
+    }
+
+    .finding-medium-badge {
+      background: #fef3c7;
+      border-color: #a16207;
+      color: #78350f;
+    }
+
+    .finding-low-badge {
+      background: #dcfce7;
+      border-color: #15803d;
+      color: #14532d;
+    }
+
+    .finding-info-badge {
+      background: #e0f2fe;
+      border-color: #0369a1;
+      color: #0c4a6e;
+    }
+
+    .finding-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 8pt;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    .finding-cvss {
+      font-weight: 600;
+    }
+
     .finding-text {
       font-size: 9pt;
       line-height: 1.5;
     }
-    
+
     /* Tables */
     table {
       width: 100%;
@@ -217,12 +485,12 @@ export function generateConsultantPDFReport(data: ReportData): string {
       margin: 15px 0 20px 0;
       font-size: 9pt;
     }
-    
+
     thead {
       background: #000;
       color: #fff;
     }
-    
+
     th {
       font-family: 'Arial', 'Helvetica', sans-serif;
       font-weight: 700;
@@ -232,23 +500,23 @@ export function generateConsultantPDFReport(data: ReportData): string {
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    
+
     td {
       padding: 8px;
       border-bottom: 1px solid #ddd;
     }
-    
+
     tr:nth-child(even) {
       background: #f9f9f9;
     }
-    
+
     /* Recommendations */
     .recommendation {
       margin-bottom: 12px;
       padding-left: 25px;
       position: relative;
     }
-    
+
     .recommendation::before {
       content: "▪";
       position: absolute;
@@ -256,12 +524,50 @@ export function generateConsultantPDFReport(data: ReportData): string {
       font-weight: 700;
       font-size: 12pt;
     }
-    
+
     .recommendation-priority {
       font-weight: 700;
       text-transform: uppercase;
     }
-    
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid #999;
+      font-size: 8pt;
+      letter-spacing: 0.4px;
+    }
+
+    .badge-outline {
+      border-color: #2563eb;
+      color: #1d4ed8;
+    }
+
+    .badge-muted {
+      border-color: #b1b1b1;
+      color: #555;
+      background: #f5f5f5;
+    }
+
+    .badge-positive {
+      border-color: #15803d;
+      color: #166534;
+      background: #dcfce7;
+    }
+
+    .badge-negative {
+      border-color: #b91c1c;
+      color: #7f1d1d;
+      background: #fee2e2;
+    }
+
+    .badge-neutral {
+      border-color: #6b7280;
+      color: #4b5563;
+      background: #f3f4f6;
+    }
+
     /* Footnotes */
     .footnotes {
       margin-top: 40px;
@@ -273,17 +579,17 @@ export function generateConsultantPDFReport(data: ReportData): string {
       page-break-inside: avoid;
       clear: both;
     }
-    
+
     .footnote-item {
       margin-bottom: 8px;
     }
-    
+
     .footnote-ref {
       vertical-align: super;
       font-size: 7pt;
       font-weight: 700;
     }
-    
+
     /* Footer */
     .page-footer {
       position: fixed;
@@ -297,8 +603,13 @@ export function generateConsultantPDFReport(data: ReportData): string {
       display: flex;
       justify-content: space-between;
       background: #fff;
+      gap: 12px;
     }
-    
+
+    .page-footer span {
+      max-width: 50%;
+    }
+
     /* Data sources grid */
     .sources-grid {
       display: grid;
@@ -307,18 +618,18 @@ export function generateConsultantPDFReport(data: ReportData): string {
       margin: 15px 0;
       font-size: 8pt;
     }
-    
+
     .source-item {
       padding: 8px;
       border: 1px solid #ddd;
       background: #fafafa;
     }
-    
+
     .source-name {
       font-weight: 700;
       margin-bottom: 2px;
     }
-    
+
     /* Confidential watermark */
     .confidential {
       position: fixed;
@@ -332,13 +643,110 @@ export function generateConsultantPDFReport(data: ReportData): string {
       font-family: 'Arial', 'Helvetica', sans-serif;
       pointer-events: none;
     }
-    
+
+    .no-data {
+      font-style: italic;
+      color: #555;
+    }
+
+    .compliance-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0 16px;
+    }
+
+    .compliance-table td {
+      vertical-align: top;
+    }
+
+    .data-points {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 15px 0;
+      font-size: 9pt;
+    }
+
+    .data-point {
+      border: 1px solid #ddd;
+      padding: 10px;
+      background: #fafafa;
+    }
+
+    .data-point-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      font-size: 8pt;
+    }
+
+    .alternatives-list {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .alternatives-list li {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .alternate-list li:last-child {
+      border-bottom: none;
+    }
+
+    .alt-index {
+      font-weight: 700;
+    }
+
+    .alt-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .alt-meta {
+      margin-bottom: 4px;
+    }
+
+    .citations-list {
+      list-style: none;
+      padding-left: 0;
+      font-size: 8pt;
+    }
+
+    .citations-list li {
+      margin-bottom: 10px;
+    }
+
+    .citation-meta {
+      color: #555;
+    }
+
+    .summary-highlight {
+      font-family: 'Arial', 'Helvetica', sans-serif;
+      font-size: 11pt;
+      font-weight: 700;
+      margin-top: 5px;
+    }
+
+    .summary-text-block {
+      margin-bottom: 12px;
+    }
+
+    .summary-text-block strong {
+      font-family: 'Arial', 'Helvetica', sans-serif;
+    }
+
     /* Print specific */
     @media print {
       body {
         background: white;
       }
-      
+
       .page-footer {
         position: fixed;
         bottom: 0;
@@ -348,111 +756,75 @@ export function generateConsultantPDFReport(data: ReportData): string {
 </head>
 <body>
   <div class="confidential">CONFIDENTIAL</div>
-  
+
   <!-- PAGE 1 -->
   <div class="page">
     <!-- Header -->
     <div class="report-header">
       <div class="report-title">Cybersecurity Risk Assessment</div>
-      <div class="report-subtitle">Third-Party Vendor Security Evaluation: ${data.query}</div>
+      <div class="report-subtitle">Third-Party Vendor Security Evaluation: ${escapeHtml(data.productName)}</div>
       <div class="report-meta">
-        <span>Assessment Date: ${data.generatedDate}</span>
-        <span>Classification: CONFIDENTIAL</span>
+        <span>Assessment Date: ${escapeHtml(data.generatedDate)}</span>
+        <span>Vendor: ${escapeHtml(data.vendorName)}</span>
       </div>
     </div>
-    
+
     <!-- Executive Summary -->
     <div class="exec-summary">
       <div class="exec-summary-title">Executive Summary</div>
-      <p class="exec-summary-text">
-        This comprehensive security assessment evaluates <strong>${data.query}</strong> across multiple 
-        dimensions including vulnerability exposure, compliance posture, and vendor reliability. Our analysis 
-        leverages data from six authoritative security databases<span class="footnote-ref">1</span> and 
-        incorporates industry-standard risk frameworks including NIST SP 800-53 and SOC 2 Type II controls.
+      <p class="exec-summary-text summary-text-block">
+        This assessment evaluates <strong>${escapeHtml(data.productName)}</strong> (${escapeHtml(
+    data.vendorName,
+  )}) using authoritative data sources delivered by WithSecure. The report examines vulnerability exposure, incident history, compliance maturity, and vendor transparency to inform procurement and risk governance decisions.
       </p>
-      <p class="exec-summary-text">
-        The assessment reveals a <strong>${data.trustScore >= 80 ? 'LOW' : data.trustScore >= 60 ? 'MODERATE' : 'HIGH'} RISK</strong> profile 
-        with ${data.criticalCVEs} critical vulnerabilities requiring immediate remediation. While vendor support 
-        demonstrates acceptable responsiveness (${data.patchResponse} average patch time), significant gaps in 
-        compliance documentation necessitate enhanced due diligence and contractual safeguards.
+      <p class="exec-summary-text summary-text-block">
+        <strong>${escapeHtml(risk.label)}</strong> posture identified. ${escapeHtml(
+    risk.note,
+  )} ${data.criticalCVEs} critical vulnerabilities were detected across ${escapeHtml(
+    data.totalCves,
+  )} total CVE records with a current trend of "${escapeHtml(data.cveTrend)}" and ${escapeHtml(
+    data.cisaKevCount,
+  )} CISA Known Exploited Vulnerabilities. Average patch response is ${escapeHtml(
+    patchLabel,
+  )}, indicating ${patchLabel === "Not reported" ? "insufficient visibility into vendor remediation timelines" : "the current vendor response cadence"}.
+      </p>
+      <p class="exec-summary-text summary-text-block">
+        ${escapeHtml(data.description || "No executive summary description was provided.")} ${escapeHtml(
+    data.usage || "",
+  )}
       </p>
     </div>
-    
+
     <!-- Key Metrics -->
     <div class="metrics-grid">
       <div class="metric-box">
         <div class="metric-label">Trust Score</div>
-        <div class="metric-value">${data.trustScore}</div>
-        <div class="metric-note">${data.trustScore >= 80 ? 'Acceptable' : data.trustScore >= 60 ? 'Caution' : 'High Risk'}</div>
+        <div class="metric-value">${escapeHtml(data.trustScore)}</div>
+        <div class="metric-note">${escapeHtml(risk.label)}</div>
       </div>
       <div class="metric-box">
         <div class="metric-label">Critical CVEs</div>
-        <div class="metric-value">${data.criticalCVEs}</div>
+        <div class="metric-value">${escapeHtml(data.criticalCVEs)}</div>
         <div class="metric-note">Immediate Action</div>
       </div>
       <div class="metric-box">
         <div class="metric-label">Compliance</div>
-        <div class="metric-value">${data.compliance}%</div>
-        <div class="metric-note">SOC 2 Coverage</div>
+        <div class="metric-value">${escapeHtml(data.compliance)}%</div>
+        <div class="metric-note">${escapeHtml(complianceFlags.soc2Status || "SOC 2 status unknown")}</div>
       </div>
       <div class="metric-box">
         <div class="metric-label">Patch Response</div>
-        <div class="metric-value">${data.patchResponse}</div>
+        <div class="metric-value">${escapeHtml(patchLabel)}</div>
         <div class="metric-note">Average Time</div>
       </div>
     </div>
-    
+
     <!-- Critical Findings -->
-    <h2>Critical Security Findings</h2>
-    
-    <div class="finding">
-      <div class="finding-title">
-        <span class="finding-severity">CRITICAL</span>
-        CVE-2021-44228: Apache Log4j Remote Code Execution Vulnerability
-      </div>
-      <p class="finding-text">
-        Our analysis identified the presence of Log4Shell (CVSS 10.0)<span class="footnote-ref">2</span>, 
-        a severe remote code execution vulnerability affecting Apache Log4j versions 2.0-beta9 through 2.14.1. 
-        This vulnerability enables unauthenticated remote attackers to execute arbitrary code through JNDI 
-        lookup manipulation. The widespread nature of this vulnerability and its exploitation in active 
-        attack campaigns necessitate immediate remediation. Vendor patches are available (v2.17.1+), and 
-        deployment should be prioritized within 24-48 hours across all production environments.
-      </p>
-    </div>
-    
-    <div class="finding">
-      <div class="finding-title">
-        <span class="finding-severity">CRITICAL</span>
-        CVE-2021-45046: Denial of Service Vulnerability
-      </div>
-      <p class="finding-text">
-        Secondary analysis reveals CVE-2021-45046 (CVSS 9.0), a denial-of-service vulnerability present 
-        in certain non-default Log4j configurations. This represents an incomplete fix for CVE-2021-44228 
-        and requires separate remediation. The attack vector involves crafted pattern layouts that can 
-        result in StackOverflowError exceptions, leading to service disruption. Patches are available 
-        in versions 2.17.0 and later.
-      </p>
-    </div>
-    
-    <div class="finding">
-      <div class="finding-title">
-        <span class="finding-severity">HIGH</span>
-        SOC 2 Compliance Gaps in Incident Response Controls
-      </div>
-      <p class="finding-text">
-        Documentation review indicates ${100 - data.compliance}% gap in SOC 2 Type II compliance coverage, 
-        primarily concentrated in incident response (IR-4, IR-5) and vendor risk management (SA-9) 
-        control families<span class="footnote-ref">3</span>. Specific deficiencies include: (i) absence 
-        of documented incident response procedures, (ii) lack of evidence for incident handling training, 
-        (iii) insufficient vendor assessment protocols, and (iv) incomplete third-party agreement reviews. 
-        These gaps present regulatory and operational risks that require structured remediation within 
-        the next 90 days.
-      </p>
-    </div>
-    
-    <!-- Vulnerability Distribution -->
+    <h2>Priority Security Findings</h2>
+    ${findingsHtml}
+
     <h2>Vulnerability Distribution Analysis</h2>
-    
+    <!-- Vulnerability Distribution -->
     <table>
       <thead>
         <tr>
@@ -463,44 +835,66 @@ export function generateConsultantPDFReport(data: ReportData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.vulnerabilityData.map(vuln => {
-          const percentage = Math.round((vuln.count / totalVulns) * 100);
-          return `
-            <tr>
-              <td><strong>${vuln.name.toUpperCase()}</strong></td>
-              <td>${vuln.count}</td>
-              <td>${percentage}%</td>
-              <td>${vuln.name === 'Critical' ? 'Immediate (24-48hrs)' : 
-                   vuln.name === 'High' ? 'Short-term (30 days)' : 
-                   vuln.name === 'Medium' ? 'Medium-term (90 days)' : 
-                   'Ongoing monitoring'}</td>
-            </tr>
-          `;
-        }).join('')}
+        ${vulnerabilityRows}
         <tr style="border-top: 2px solid #000; font-weight: 700;">
           <td>TOTAL</td>
-          <td>${totalVulns}</td>
+          <td>${escapeHtml(totalVulns)}</td>
           <td>100%</td>
           <td>—</td>
         </tr>
       </tbody>
     </table>
-    
     <p>
-      Analysis of ${totalVulns} identified vulnerabilities reveals a concentration in critical and high-severity 
-      categories (${Math.round(((data.vulnerabilityData.find(v => v.name === 'Critical')?.count || 0) + 
-      (data.vulnerabilityData.find(v => v.name === 'High')?.count || 0)) / totalVulns * 100)}% combined), 
-      indicating elevated risk exposure. The majority of these vulnerabilities have vendor-published 
-      patches available, suggesting that the primary risk factor is patch deployment latency rather 
-      than unresolved security issues.
+      ${
+        totalVulns > 0
+          ? `Assessment identified ${escapeHtml(totalVulns)} open vulnerabilities with ${escapeHtml(
+              criticalCount,
+            )} critical and ${escapeHtml(highCount)} high-severity exposures.`
+          : "No vulnerability distribution data was reported by the upstream sources at the time of assessment."
+      }
     </p>
+
+    <h2>Compliance & Governance Overview</h2>
+    <div class="compliance-summary">
+      ${complianceBadges}
+    </div>
+    <table class="compliance-table">
+      <thead>
+        <tr>
+          <th>Framework / Control</th>
+          <th>Status</th>
+          <th>Evidence</th>
+          <th>Expiry</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${certificationRows}
+      </tbody>
+    </table>
+
+    <div class="data-points">
+      <div class="data-point">
+        <div class="data-point-title">Deployment Controls</div>
+        <div>${escapeHtml(data.deploymentControls || "Not documented")}</div>
+      </div>
+      <div class="data-point">
+        <div class="data-point-title">Data Encryption</div>
+        <div>${data.dataHandling.encryptionClaimed ? "Vendor claims to encrypt data." : "Encryption claims not confirmed."} ${escapeHtml(data.dataHandling.encryptionDetails || "")}</div>
+      </div>
+      <div class="data-point">
+        <div class="data-point-title">Data Retention</div>
+        <div>${escapeHtml(data.dataHandling.dataRetention || "Not disclosed")}</div>
+      </div>
+      <div class="data-point">
+        <div class="data-point-title">Data Residency</div>
+        <div>${escapeHtml(data.dataHandling.dataLocation || "Not disclosed")}</div>
+      </div>
+    </div>
   </div>
-  
+
   <!-- PAGE 2 -->
   <div class="page">
-    <!-- Security Posture Assessment -->
-    <h2>Multi-Dimensional Security Posture</h2>
-    
+    <h2>Security Posture Assessment</h2>
     <table>
       <thead>
         <tr>
@@ -510,168 +904,56 @@ export function generateConsultantPDFReport(data: ReportData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.securityScoreData.map(item => `
-          <tr>
-            <td><strong>${item.category}</strong></td>
-            <td>${item.score}/100</td>
-            <td>${item.score >= 80 ? 'Strong performance with minimal gaps' : 
-                 item.score >= 70 ? 'Adequate controls, improvement opportunities identified' :
-                 item.score >= 60 ? 'Moderate concerns, targeted remediation required' :
-                 'Significant deficiencies requiring immediate attention'}</td>
-          </tr>
-        `).join('')}
+        ${securityRows}
       </tbody>
     </table>
-    
-    <p>
-      The security posture evaluation employs a weighted scoring methodology across six critical 
-      dimensions. Notably, Documentation (${data.securityScoreData.find(s => s.category === 'Documentation')?.score || 90}/100) 
-      and Community Support (${data.securityScoreData.find(s => s.category === 'Community Support')?.score || 85}/100) 
-      demonstrate strong performance, while Vulnerability Management (${data.securityScoreData.find(s => s.category === 'Vulnerability Management')?.score || 65}/100) 
-      requires targeted improvement initiatives.
-    </p>
-    
-    <!-- Detailed CVE Inventory -->
-    <h2>Detailed Vulnerability Inventory</h2>
-    
+
+    <h2>Recent CVE Inventory</h2>
     <table>
       <thead>
         <tr>
           <th>CVE Identifier</th>
           <th>CVSS</th>
           <th>Attack Vector</th>
-          <th>Patch Status</th>
+          <th>CISA KEV</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td><strong>CVE-2021-44228</strong></td>
-          <td>10.0</td>
-          <td>Network/JNDI Injection</td>
-          <td>Patched v2.17.1+</td>
-        </tr>
-        <tr>
-          <td><strong>CVE-2021-45046</strong></td>
-          <td>9.0</td>
-          <td>Network/Pattern Layout</td>
-          <td>Patched v2.17.0+</td>
-        </tr>
-        <tr>
-          <td><strong>CVE-2021-45105</strong></td>
-          <td>7.5</td>
-          <td>Network/Recursive Evaluation</td>
-          <td>Patched v2.17.0+</td>
-        </tr>
-        <tr>
-          <td><strong>CVE-2021-44832</strong></td>
-          <td>6.6</td>
-          <td>Local/JDBC Configuration</td>
-          <td>Patched v2.17.1+</td>
-        </tr>
-        <tr>
-          <td><strong>CVE-2020-9488</strong></td>
-          <td>3.7</td>
-          <td>Adjacent/SMTP Disclosure</td>
-          <td>Patched v2.13.2+</td>
-        </tr>
+        ${cveRows}
       </tbody>
     </table>
-    
-    <!-- Recommendations -->
-    <h2>Strategic Recommendations</h2>
-    
-    <div class="recommendation">
-      <span class="recommendation-priority">Immediate (0-48 hours):</span>
-      Deploy emergency patches for CVE-2021-44228 and CVE-2021-45046 across all production and 
-      non-production environments. Implement network-based detection rules to identify exploitation 
-      attempts. Conduct forensic review of application logs for indicators of compromise dating 
-      back 30 days.
-    </div>
-    
-    <div class="recommendation">
-      <span class="recommendation-priority">Short-term (1-4 weeks):</span>
-      Establish comprehensive monitoring infrastructure including SIEM integration, WAF rule 
-      deployment for JNDI pattern blocking, and endpoint detection capabilities. Engage vendor 
-      for formal security roadmap disclosure and commit to regular vulnerability disclosures.
-    </div>
-    
-    <div class="recommendation">
-      <span class="recommendation-priority">Medium-term (1-3 months):</span>
-      Address SOC 2 compliance gaps through documentation enhancement, control implementation, 
-      and third-party audit preparation. Develop formal incident response procedures (IR-4) 
-      and vendor risk assessment protocols (SA-9). Conduct tabletop exercises for critical 
-      vulnerability scenarios.
-    </div>
-    
-    <div class="recommendation">
-      <span class="recommendation-priority">Long-term strategic (3-12 months):</span>
-      Evaluate alternative logging frameworks (Logback, SLF4J Simple) as potential replacements 
-      to reduce dependency risk. Implement automated vulnerability scanning in CI/CD pipelines. 
-      Establish formal vendor risk management program with periodic reassessment cycles.
-    </div>
-    
-    <div class="recommendation">
-      <span class="recommendation-priority">Continuous operations:</span>
-      Subscribe to vendor security advisories and establish monthly security review cadence. 
-      Maintain updated asset inventory with version tracking. Implement automated patch 
-      management for critical and high-severity vulnerabilities within SLA thresholds 
-      (critical: 48hrs, high: 30 days, medium: 90 days).
-    </div>
-    
-    <!-- Data Sources -->
-    <h2>Methodology & Data Sources</h2>
-    
-    <p>
-      This assessment leverages authoritative security intelligence from multiple industry-recognized 
-      sources to ensure comprehensive coverage and analytical rigor:
-    </p>
-    
-    <div class="sources-grid">
-      <div class="source-item">
-        <div class="source-name">National Vulnerability Database (NVD)</div>
-        <div>NIST-managed repository, 210,000+ CVE records analyzed</div>
-      </div>
-      <div class="source-item">
-        <div class="source-name">GitHub Security Advisories</div>
-        <div>Developer-reported vulnerabilities, 5,000+ advisories reviewed</div>
-      </div>
-      <div class="source-item">
-        <div class="source-name">US-CERT/CISA Alerts</div>
-        <div>Federal cybersecurity alerts, 12,000+ bulletins analyzed</div>
-      </div>
-      <div class="source-item">
-        <div class="source-name">HaveIBeenPwned Database</div>
-        <div>Breach monitoring service, 600+ data breach incidents</div>
-      </div>
-      <div class="source-item">
-        <div class="source-name">AlienVault OTX</div>
-        <div>Threat intelligence platform, 19M+ threat indicators</div>
-      </div>
-      <div class="source-item">
-        <div class="source-name">Snyk Vulnerability Database</div>
-        <div>Open-source security platform, 1M+ vulnerability records</div>
-      </div>
-    </div>
-    
-    <!-- Footnotes -->
-    <div class="footnotes">
-      <div class="footnote-item">
-        <strong>1.</strong> Data sources include NVD, GitHub Security Advisories, US-CERT, HaveIBeenPwned, 
-        AlienVault OTX, and Snyk Vulnerability Database. All data current as of assessment date.
-      </div>
-      <div class="footnote-item">
-        <strong>2.</strong> CVSS scores based on Common Vulnerability Scoring System v3.1. Temporal 
-        metrics adjusted for patch availability and active exploitation status.
-      </div>
-      <div class="footnote-item">
-        <strong>3.</strong> SOC 2 control references map to AICPA Trust Services Criteria. IR-4 (Incident 
-        Handling), IR-5 (Incident Monitoring), SA-9 (External Information System Services) per NIST 
-        SP 800-53 Rev. 5 taxonomy.
-      </div>
-    </div>
-    
-    <!-- Disclaimer -->
-    <p style="margin-top: 25px; font-size: 8pt; color: #666; font-style: italic; border-top: 1px solid #ccc; padding-top: 15px;">
+
+    <h2>Incident History & Exposure</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Severity</th>
+          <th>Description</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${incidentRows}
+      </tbody>
+    </table>
+    <p>${data.breachCount > 0 ? `${escapeHtml(data.breachCount)} confirmed breach${data.breachCount === 1 ? "" : "es"} reported.` : "No public breaches recorded for this vendor."}</p>
+
+    <h2>Safer Alternatives</h2>
+    <ul class="alternatives-list">
+      ${alternativesList}
+    </ul>
+
+    <h2>Assessment Rationale</h2>
+    <p>${escapeHtml(data.rationale || "No additional rationale was provided.")}</p>
+
+    <h2>Sources & Citations</h2>
+    <ol class="citations-list">
+      ${citationsList}
+    </ol>
+
+    <p style="margin-top: 20px; font-size: 8pt; color: #666; font-style: italic; border-top: 1px solid #ccc; padding-top: 15px;">
       <strong>CONFIDENTIALITY NOTICE:</strong> This document contains proprietary and confidential 
       information. Distribution is restricted to authorized personnel only. The information contained 
       herein represents a point-in-time assessment and should be supplemented with ongoing monitoring 
@@ -679,16 +961,16 @@ export function generateConsultantPDFReport(data: ReportData): string {
       or completeness of third-party security data.
     </p>
   </div>
-  
+
   <div class="page-footer">
     <span>CISO Security Assessor | Confidential Assessment Report</span>
-    <span>Generated: ${data.generatedDate}</span>
+    <span>Generated: ${escapeHtml(data.generatedDate)} · ${escapeHtml(data.query)}</span>
   </div>
 </body>
 </html>`;
 }
 
-export function downloadConsultantPDF(data: ReportData) {
+export function downloadConsultantPDF(data: ReportExportPayload) {
   const html = generateConsultantPDFReport(data);
   
   const printWindow = window.open('', '_blank');
