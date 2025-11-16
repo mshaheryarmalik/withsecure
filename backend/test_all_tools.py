@@ -12,11 +12,13 @@ import os
 import sys
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from backend/.env regardless of current working directory
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_DIR / ".env")
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))

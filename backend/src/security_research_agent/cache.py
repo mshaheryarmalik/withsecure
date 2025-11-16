@@ -13,13 +13,18 @@ from .security_state import CISOBrief
 class AssessmentCache:
     """Simple file-based cache for CISO security assessments."""
     
-    def __init__(self, cache_dir: str = ".cache/assessments", ttl_hours: int = 24):
+    def __init__(self, cache_dir: str | None = None, ttl_hours: int = 24):
         """Initialize cache.
         
         Args:
-            cache_dir: Directory to store cache files
+            cache_dir: Directory to store cache files. If None, defaults to backend/.cache/assessments.
             ttl_hours: Time-to-live in hours (default 24)
         """
+        if cache_dir is None:
+            # Default to backend/.cache/assessments regardless of current working directory
+            backend_dir = Path(__file__).resolve().parents[3]
+            self.cache_dir = backend_dir / ".cache" / "assessments"
+        else:
         self.cache_dir = Path(cache_dir)
         self.ttl_hours = ttl_hours
         self.cache_dir.mkdir(parents=True, exist_ok=True)

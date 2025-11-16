@@ -14,14 +14,19 @@ _logger_cache = {}
 class DebugLogger:
     """Logger for debugging CISO assessment phases."""
     
-    def __init__(self, product_name: str, log_dir: str = ".logs"):
+    def __init__(self, product_name: str, log_dir: str | None = None):
         """Initialize debug logger.
         
         Args:
             product_name: Name of the product being assessed
-            log_dir: Directory to store log files
+            log_dir: Directory to store log files. If None, defaults to backend/.logs.
         """
         self.product_name = product_name
+        if log_dir is None:
+            # Default to backend/.logs regardless of current working directory
+            backend_dir = Path(__file__).resolve().parents[3]
+            self.log_dir = backend_dir / ".logs"
+        else:
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
         

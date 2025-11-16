@@ -43,35 +43,36 @@ Optional (but recommended):
 
 ```bash
 # Assess by product name
-python ciso_cli.py assess --product "Slack"
+python backend/ciso_cli.py assess --product "Slack"
 
 # Assess by URL
-python ciso_cli.py assess --url "https://slack.com"
+python backend/ciso_cli.py assess --url "https://slack.com"
 
 # Assess by SHA1 hash
-python ciso_cli.py assess --sha1 "a1b2c3d4e5f6..."
+python backend/ciso_cli.py assess --sha1 "a1b2c3d4e5f6..."
 
 # With version filtering
-python ciso_cli.py assess --product "Zoom" --version "5.14.5"
+python backend/ciso_cli.py assess --product "Zoom" --version "5.14.5"
 
 # Save as markdown report
-python ciso_cli.py assess --product "Dropbox" --output markdown --output-file report.md
+python backend/ciso_cli.py assess --product "Dropbox" --output markdown --output-file report.md
 
 # Save as JSON
-python ciso_cli.py assess --product "Salesforce" --output json --output-file assessment.json
+python backend/ciso_cli.py assess --product "Salesforce" --output json --output-file assessment.json
 
 # Disable cache (force fresh assessment)
-python ciso_cli.py assess --product "GitHub" --no-cache
+python backend/ciso_cli.py assess --product "GitHub" --no-cache
 ```
 
 #### Option B: REST API with Streaming
 
 ```bash
 # Start the API server
-python apps.py
+python backend/app.py
 
-# Or with uvicorn for production
-uvicorn apps:app --host 0.0.0.0 --port 8000 --workers 4
+# Or with uvicorn for production (from the backend directory)
+cd backend
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 **Test the API:**
@@ -508,29 +509,21 @@ flowchart TD
 
 ```
 src/security_research_agent/
-├── configuration.py           # Agent configuration & settings
-├── security_state.py          # Pydantic models for CISO brief
-├── security_prompts.py        # CISO-focused prompts
-├── ciso_assessor.py          # Main LangGraph orchestration
-├── cache.py                  # File-based assessment cache
-├── utils.py                  # Shared utilities
-├── debug_logger.py           # Structured logging
-└── tools/                    # Security assessment tools (25+)
-    ├── __init__.py           # Central tool registry
-    ├── entity_resolution.py  # Product/vendor identification
-    ├── vulnerability.py      # CVE & CISA KEV lookups
-    ├── vendor_compliance.py  # Security pages, ToS, certifications
-    ├── threat_intel.py       # Malware & threat intelligence
-    ├── incidents.py          # Breach & incident databases
-    ├── advisories.py         # US-CERT & CERT/CC advisories
-    ├── news.py              # Security news aggregation
-    ├── company_info.py      # WHOIS & company data
-    ├── community.py         # Reddit, GitHub, StackOverflow
-    └── alternatives.py      # Alternative product search
+├── configuration.py      # Agent configuration
+├── security_state.py     # Pydantic models for CISO brief
+├── tools/               # Security assessment tools (organized by category)
+│   ├── entity_resolution.py   # Entity resolution from name/URL/SHA1
+│   ├── vulnerability.py        # CVE and security advisory lookups
+│   ├── vendor_compliance.py    # Vendor security info, ToS, privacy
+│   ├── threat_intel.py         # Malware, threat intelligence
+│   ├── incidents.py            # Breach and incident data
+│   └── ...                     # Additional tool categories
+├── security_prompts.py   # CISO-focused prompts
+├── ciso_assessor.py     # Main LangGraph orchestration
+├── cache.py             # File-based assessment cache
+└── utils.py             # Shared utilities
 
-app.py                        # FastAPI REST API with streaming
-ciso_cli.py                   # Command-line interface
-```
+ciso_cli.py              # Command-line interface
 
 ### Key Architecture Principles
 

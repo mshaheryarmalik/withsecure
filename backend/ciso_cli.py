@@ -17,8 +17,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from backend/.env regardless of current working directory
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_DIR / ".env")
 
 from src.security_research_agent.cache import get_cache
 from src.security_research_agent.ciso_assessor import assess_security

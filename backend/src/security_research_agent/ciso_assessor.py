@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
@@ -44,8 +43,16 @@ from .tools import (
     lookup_security_incidents,
     lookup_latest_version,
 )
-from .utils import get_api_key_for_model
+from .api_utils import get_api_key_for_model
+from .constants import DEFAULT_CLASSIFICATION_MODEL, DEFAULT_FINAL_REPORT_MODEL
+from .llm_utils import extract_json_from_markdown, init_gemini_model
 from .debug_logger import get_debug_logger
+from .scoring import calculate_risk_trust_scores
+from .parsers import parse_compliance_data, build_citations
+from .parsers.citation_builder import generate_insufficient_notes
+from .parsers.compliance_parser import extract_iso_certifications, check_gdpr_in_certifications, check_encryption_mentions
+from .alternatives import extract_alternatives_from_community
+from .reporting import assemble_ciso_brief, format_summary_message
 
 
 class AssessmentState(BaseModel):
@@ -326,15 +333,15 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         # Get configuration
         configuration = Configuration.from_runnable_config(config)
         
-        # Initialize LLM (use Gemini model - same pattern as workers)
-        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
+        # Initialize LLM with thinking enabled
+        model_name = configuration.classification_model or DEFAULT_CLASSIFICATION_MODEL
         api_key = get_api_key_for_model(model_name, config)
         
-        llm = init_chat_model(
-            model=model_name,
-            model_provider="google_genai",
+        llm = init_gemini_model(
+            model_name=model_name,
             api_key=api_key,
-            temperature=0
+            temperature=0,
+            thinking_budget=1024
         )
         
         # Format categories as a numbered list for better LLM processing
@@ -362,18 +369,8 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
         response = llm.invoke([HumanMessage(content=prompt_text)])
         response_text = response.content
         
-        # Parse JSON response
-        # Clean up markdown formatting if present
-        response_text = response_text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-        
-        classification_result = json.loads(response_text)
+        # Parse JSON response using common utility
+        classification_result = extract_json_from_markdown(response_text)
         
         primary_category = classification_result.get("primary_category", "Other")
         secondary_categories = classification_result.get("secondary_categories", [])
@@ -802,22 +799,16 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         configuration = Configuration.from_runnable_config(config)
         status_update.append(f"  ⚙️  Model: {configuration.final_report_model}")
         
-        # Parse model string (format: "provider:model" or just "model")
-        model_str = configuration.final_report_model
-        if ":" in model_str:
-            provider, model_name = model_str.split(":", 1)
-        else:
-            provider = "google_genai"
-            model_name = model_str
+        # Get model name and API key
+        model_name = configuration.final_report_model or DEFAULT_FINAL_REPORT_MODEL
+        api_key = get_api_key_for_model(model_name, config or {})
         
-        # Get API key
-        api_key = get_api_key_for_model(model_str, config or {})
-        
-        # Initialize model
-        model = init_chat_model(
-            model=model_name,
-            model_provider=provider,
-            api_key=api_key
+        # Initialize model with thinking enabled (Pro model for detailed reports)
+        model = init_gemini_model(
+            model_name=model_name,
+            api_key=api_key,
+            temperature=0,
+            thinking_budget=1024
         )
         
         # Prepare entity data
@@ -851,395 +842,55 @@ def generate_ciso_brief_node(state: AssessmentState, config: RunnableConfig) -> 
         )
         
         # PARSE COMPLIANCE DATA FIRST (before LLM scoring) to use actual values
-        encryption_mentioned = False
-        iso_certs = []
-        gdpr_in_certs = False
+        iso_certs = extract_iso_certifications(vendor_reputation)
+        gdpr_in_certs = check_gdpr_in_certifications(iso_certs)
+        encryption_mentioned = check_encryption_mentions(state.additional_data)
         
-        # Extract ISO certifications
-        if vendor_reputation.claimed_certifications:
-            for cert in vendor_reputation.claimed_certifications:
-                if 'ISO' in cert:
-                    from .security_state import CertificationDetail
-                    iso_certs.append(CertificationDetail(
-                        certification_type=cert,
-                        status="claimed",
-                        source_label=SourceLabel.VENDOR_STATED
-                    ))
-                if 'GDPR' in cert:
-                    gdpr_in_certs = True
-        
-        # Parse ToS/Privacy/DPA for encryption mentions
-        if state.additional_data:
-            if state.additional_data.get('tos') and state.additional_data['tos'].get('content'):
-                if 'encrypt' in state.additional_data['tos']['content'].lower():
-                    encryption_mentioned = True
-            
-            if not encryption_mentioned and state.additional_data.get('privacy') and state.additional_data['privacy'].get('content'):
-                if 'encrypt' in state.additional_data['privacy']['content'].lower():
-                    encryption_mentioned = True
-            
-            if not encryption_mentioned and state.additional_data.get('dpa') and state.additional_data['dpa'].get('content'):
-                if 'encrypt' in state.additional_data['dpa']['content'].lower():
-                    encryption_mentioned = True
-        
-        # Calculate scores using LLM - provide ALL PARSED data
-        scoring_prompt = RISK_SCORING_PROMPT.format(
-            product_name=entity_data.product_name,
-            vendor_name=entity_data.vendor_name,
-            website=entity_data.website or "Not found",
-            total_cves=cve_summary.total_cves,
-            critical=cve_summary.critical_count,
-            high=cve_summary.high_count,
-            kev_count=cve_summary.cisa_kev_count,
-            trend=cve_summary.trend,
-            breaches=incident_report.breach_count,
-            incidents=len(incident_report.incidents),
-            soc2=vendor_reputation.claimed_certifications,
-            iso_count=len(iso_certs),
-            gdpr=gdpr_in_certs,
-            encryption=encryption_mentioned,
-            tos_found=bool(state.additional_data and state.additional_data.get('tos')),
+        # Calculate trust and risk scores using modular scoring system
+        trust_score, risk_score, confidence, rationale, status_update = calculate_risk_trust_scores(
+            model=model,
+            entity_data=entity_data,
+            cve_summary=cve_summary,
+            incident_report=incident_report,
+            vendor_reputation=vendor_reputation,
+            iso_certs=iso_certs,
+            gdpr_in_certs=gdpr_in_certs,
+            encryption_mentioned=encryption_mentioned,
+            state_additional_data=state.additional_data or {},
+            status_update=status_update
         )
         
-        # Count available data
-        data_points = 0
-        if state.cve_data:
-            data_points += state.cve_data.get('total_cves', 0)
-        if state.vendor_data and state.vendor_data.get('security_page_found'):
-            data_points += len(state.vendor_data.get('claimed_certifications', []))
-        if state.incident_data:
-            data_points += state.incident_data.get('breach_count', 0)
+        # Extract alternatives using modular extractor
+        alternatives = extract_alternatives_from_community(
+            state_entity=state.entity,
+            state_additional_data=state.additional_data,
+            config=config,
+            status_update=status_update
+        )
         
-        status_update.append(f"  📊 Processing {data_points}+ security data points...")
-        status_update.append("")
-        status_update.append("  [Step 1/5] 🔍 Analyzing security posture...")
-        status_update.append("        ├─ Evaluating CVE severity distribution")
-        status_update.append("        ├─ Assessing vulnerability trends")
-        status_update.append("        ├─ Checking exploit status (CISA KEV)")
-        status_update.append("        └─ Analyzing vendor transparency")
+        # Parse full compliance data for final brief
+        (gdpr_compliant, gdpr_source, encryption_full, encryption_source,
+         data_retention_policy, third_party_sharing, iso_certs_full, soc2_status) = parse_compliance_data(
+            vendor_reputation=vendor_reputation,
+            additional_data=state.additional_data or {}
+        )
         
-        messages = [
-            {"role": "system", "content": CISO_SYSTEM_PROMPT},
-            {"role": "user", "content": scoring_prompt}
-        ]
+        # Build citations from all sources
+        citations = build_citations(
+            entity_data=entity_data,
+            cve_summary=cve_summary,
+            additional_data=state.additional_data or {}
+        )
         
-        status_update.append("")
-        status_update.append("  [Step 2/5] 🤖 Invoking AI reasoning model...")
-        scoring_response = model.invoke(messages)
-        status_update.append("        └─ ✓ AI analysis complete (reasoning generated)")
+        # Generate insufficiency notes
+        insufficient_notes = generate_insufficient_notes(
+            cve_data=state.cve_data,
+            vendor_data=state.vendor_data,
+            incident_data=state.incident_data,
+            additional_data=state.additional_data
+        )
         
-        # Parse JSON response from LLM
-        trust_score = 50  # Default
-        risk_score = 50
-        confidence = ConfidenceLevel.MEDIUM
-        rationale = "Assessment based on available data"
-        
-        try:
-            content = scoring_response.content if hasattr(scoring_response, 'content') else ""
-            
-            # Extract JSON from response (handle markdown code blocks)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            elif "{" in content:
-                # Extract just the JSON object
-                start = content.find("{")
-                end = content.rfind("}") + 1
-                content = content[start:end]
-            
-            # Parse JSON
-            scores_data = json.loads(content)
-            trust_score = scores_data.get('trust_score', 50)
-            risk_score = scores_data.get('risk_score', 50)
-            rationale = scores_data.get('rationale', 'Assessment based on available data')
-        except Exception as e:
-            # Fallback to regex if JSON parsing fails
-            trust_match = re.search(r'trust[_\s]*score[:\s]*(\d+)', content, re.IGNORECASE)
-            risk_match = re.search(r'risk[_\s]*score[:\s]*(\d+)', content, re.IGNORECASE)
-            
-            if trust_match:
-                trust_score = int(trust_match.group(1))
-            if risk_match:
-                risk_score = int(risk_match.group(1))
-        
-        status_update.append("")
-        status_update.append("  [Step 3/5] 📊 Calculating trust & risk scores...")
-        
-        # Determine confidence based on data availability (including ALL sources)
-        data_sources = 0
-        source_names = []
-        if state.cve_data and state.cve_data.get('data_available'):
-            data_sources += 1
-            source_names.append("NVD")
-        if state.vendor_data and state.vendor_data.get('security_page_found'):
-            data_sources += 1
-            source_names.append("Vendor Pages")
-        if state.incident_data and state.incident_data.get('data_available'):
-            data_sources += 1
-            source_names.append("HIBP")
-        
-        # Count additional sources
-        if state.additional_data:
-            for source_key in state.additional_data.keys():
-                data_sources += 1
-                source_names.append(source_key.replace('_', ' ').title())
-        
-        status_update.append(f"        ├─ Data sources available: {data_sources}")
-        for i, name in enumerate(source_names[:6], 1):  # Show first 6
-            status_update.append(f"        │  {'└' if i == min(len(source_names), 6) else '├'}─ {name}")
-        if len(source_names) > 6:
-            status_update.append(f"        │  └─ ...and {len(source_names) - 6} more")
-        
-        # Process threat intelligence and advisories from additional_data
-        advisory_penalty = 0
-        if state.additional_data:
-            # Check GitHub Advisories - add to risk
-            gh_advisories = state.additional_data.get('github_advisories', {})
-            if gh_advisories.get('advisory_count', 0) > 0:
-                advisory_penalty += gh_advisories['advisory_count'] * 0.3
-            
-            # Check US-CERT Advisories - add to risk (government warnings are serious)
-            cert_advisories = state.additional_data.get('us_cert', {})
-            if cert_advisories.get('advisory_count', 0) > 0:
-                advisory_penalty += cert_advisories['advisory_count'] * 0.5
-            
-            # Check MalwareBazaar - major risk if malware detected
-            malware_data = state.additional_data.get('malwarebazaar', {})
-            if malware_data.get('malware_detected'):
-                risk_score = min(100, risk_score + 25)
-                trust_score = max(0, trust_score - 20)
-                status_update.append("        ⚠️  ALERT: Malware samples detected in MalwareBazaar")
-            
-            # Check URLhaus - major risk if malicious URLs found
-            urlhaus_data = state.additional_data.get('urlhaus', {})
-            if urlhaus_data.get('malicious_urls_found', 0) > 0:
-                risk_score = min(100, risk_score + 20)
-                trust_score = max(0, trust_score - 15)
-                status_update.append("        ⚠️  ALERT: Malicious URLs detected in URLhaus")
-            
-            # Check AlienVault OTX - moderate risk if threats found
-            otx_data = state.additional_data.get('otx', {})
-            if otx_data.get('threat_found'):
-                risk_score = min(100, risk_score + 15)
-                trust_score = max(0, trust_score - 10)
-                status_update.append("        ⚠️  WARNING: Threat indicators in AlienVault OTX")
-            
-            # Check WHOIS domain age - older domains = more trust
-            whois_data = state.additional_data.get('whois', {})
-            if whois_data.get('creation_date'):
-                try:
-                    from datetime import datetime
-                    creation_date = whois_data['creation_date']
-                    if isinstance(creation_date, str) and len(creation_date) >= 4:
-                        year = int(creation_date[:4])
-                        current_year = datetime.now().year
-                        domain_age = current_year - year
-                        
-                        if domain_age >= 10:
-                            trust_score = min(100, trust_score + 5)
-                            status_update.append(f"        ✓ Domain age: {domain_age} years (trust bonus)")
-                        elif domain_age >= 5:
-                            trust_score = min(100, trust_score + 3)
-                        elif domain_age < 2:
-                            trust_score = max(0, trust_score - 5)
-                            status_update.append(f"        ⚠️  Domain age: {domain_age} years (new domain)")
-                except:
-                    pass
-        
-        # Apply advisory penalty to risk score
-        if advisory_penalty > 0:
-            risk_score = min(100, risk_score + int(advisory_penalty))
-            status_update.append(f"        ⚠️  Additional advisories: {int(advisory_penalty)} risk points added")
-        
-        if data_sources >= 2:
-            confidence = ConfidenceLevel.MEDIUM
-        elif data_sources >= 1:
-            confidence = ConfidenceLevel.LOW
-        else:
-            confidence = ConfidenceLevel.INSUFFICIENT
-        
-        status_update.append(f"        ├─ Confidence level: {confidence.value.upper()}")
-        status_update.append("        ├─ Trust score algorithm:")
-        status_update.append("        │  ├─ Base: 50/100")
-        status_update.append("        │  ├─ CVE penalty: -{cve_summary.total_cves * 0.5}")
-        status_update.append("        │  ├─ Breach penalty: -{incident_report.breach_count * 10}")
-        status_update.append("        │  └─ Transparency bonus: +{vendor_reputation.claimed_certifications count * 2}")
-        status_update.append(f"        ├─ ✓ Trust Score: {trust_score}/100")
-        status_update.append(f"        └─ ✓ Risk Score: {risk_score}/100")
-        
-        status_update.append("")
-        status_update.append("  [Step 4/5] 🔄 Identifying safer alternatives...")
-        status_update.append(f"        ├─ Category: {taxonomy_data.primary_category}")
-        status_update.append("        ├─ Searching alternative database...")
-        
-        # Generate alternatives - use Phase 3 collected data only
-        alternatives = []
-        
-        # Try to use alternatives from Phase 3 data gathering
-        if state.additional_data and 'alternatives' in state.additional_data:
-            alt_data = state.additional_data['alternatives']
-            if alt_data.get('alternatives') and isinstance(alt_data['alternatives'], list):
-                status_update.append(f"        ├─ Processing {len(alt_data['alternatives'])} search results from Phase 3...")
-                
-                # Collect all summaries to extract product names using LLM
-                summaries_text = ""
-                for i, alt in enumerate(alt_data['alternatives'][:5]):
-                    if isinstance(alt, dict):
-                        content = alt.get('summary', alt.get('content', ''))
-                        if content:
-                            summaries_text += f"\nResult {i+1}: {content[:300]}\n"
-                
-                if summaries_text:
-                    try:
-                        # Use LLM to extract actual product names from summaries
-                        extraction_prompt = f"""Extract the actual alternative product/software names mentioned in these search results.
-
-Search results about alternatives to "{state.entity.get('product_name', 'the product')}":
-{summaries_text}
-
-Return ONLY a JSON array of the top 1 to 2 alternative products mentioned, with this format:
-[
-  {{"product_name": "Product Name", "vendor_name": "Vendor Name", "reason": "brief reason why it's an alternative"}},
-  ...
-]
-
-IMPORTANT:
-- Extract ACTUAL product names (e.g., "Microsoft Teams", "Slack", "Google Workspace")
-- Do NOT include generic terms like "alternatives", "competitors", "best tools"
-- Only include products that are clearly mentioned as alternatives
-- Limit to top 1 to 2 most relevant alternatives
-- If no vendor names are found, dont return them.
-- If no product names are found, dont return the product name
-- If no reason is found, dont return the reason
-- Return ONLY the JSON array, no other text"""
-
-
-                        # Get configuration and initialize LLM
-                        configuration = Configuration.from_runnable_config(config)
-                        model_name = configuration.classification_model or "gemini-2.0-flash-exp"
-                        api_key = get_api_key_for_model(model_name, config)
-                        
-                        llm = init_chat_model(
-                            model=model_name,
-                            model_provider="google_genai",
-                            api_key=api_key,
-                            temperature=0
-                        )
-                        
-                        response = llm.invoke([HumanMessage(content=extraction_prompt)])
-                        response_text = response.content.strip()
-                        
-                        # Clean JSON formatting
-                        if response_text.startswith("```json"):
-                            response_text = response_text[7:]
-                        if response_text.startswith("```"):
-                            response_text = response_text[3:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-                        response_text = response_text.strip()
-                        
-                        extracted_products = json.loads(response_text)
-                        
-                        # Convert to AlternativeProduct objects
-                        for product in extracted_products:
-                            if isinstance(product, dict):
-                                prod_name = product.get('product_name', '').strip()
-                                vendor = product.get('vendor_name', '').strip()
-                                reason = product.get('reason', 'Alternative product')
-                                
-                                if prod_name and prod_name.lower() not in ['unknown', 'alternatives', 'competitors']:
-                                    alternatives.append(AlternativeProduct(
-                                        product_name=prod_name,
-                                        vendor_name=vendor,
-                                        rationale=reason
-                                    ))
-                                    status_update.append(f"        │  • {prod_name} ({vendor})")
-                        
-                        if alternatives:
-                            status_update.append(f"        ├─ ✓ Extracted {len(alternatives)} products using LLM")
-                    
-                    except Exception as e:
-                        status_update.append(f"        ├─ ⚠️  LLM extraction failed: {str(e)}")
-        
-        # Report results
-        if alternatives:
-            status_update.append(f"        └─ ✓ Found {len(alternatives)} alternatives from Phase 3 data")
-        else:
-            status_update.append(f"        └─ ⚠️  No alternatives found")
-        
-        # Build citations from ALL sources
-        citations = []
-        citation_map = {
-            'nvd': ("https://nvd.nist.gov", "NVD", SourceLabel.INDEPENDENT, "CVE data and vulnerability counts"),
-            'github_advisories': ("https://github.com/advisories", "GitHub Advisories", SourceLabel.INDEPENDENT, "Security advisories"),
-            'us_cert': ("https://www.cisa.gov/uscert/", "US-CERT", SourceLabel.INDEPENDENT, "CERT advisories"),
-            'hibp': ("https://haveibeenpwned.com", "HaveIBeenPwned", SourceLabel.INDEPENDENT, "Breach data"),
-            'news': ("Tavily Search", "Security News", SourceLabel.INDEPENDENT, "Security incident reports"),
-            'malwarebazaar': ("https://bazaar.abuse.ch", "MalwareBazaar", SourceLabel.INDEPENDENT, "Malware sample database"),
-            'urlhaus': ("https://urlhaus.abuse.ch", "URLhaus", SourceLabel.INDEPENDENT, "Malicious URL detection"),
-            'otx': ("https://otx.alienvault.com", "AlienVault OTX", SourceLabel.INDEPENDENT, "Threat intelligence"),
-            'whois': ("WHOIS Lookup", "Domain WHOIS", SourceLabel.INDEPENDENT, "Domain registration data"),
-            'fedramp': ("https://marketplace.fedramp.gov", "FedRAMP", SourceLabel.INDEPENDENT, "Government cloud authorization"),
-            'tos': (entity_data.website, "Terms of Service", SourceLabel.VENDOR_STATED, "Legal terms"),
-            'privacy': (entity_data.website, "Privacy Policy", SourceLabel.VENDOR_STATED, "Privacy commitments"),
-            'dpa': (entity_data.website, "Data Processing Agreement", SourceLabel.VENDOR_STATED, "Data handling terms"),
-            'company': ("Tavily Search", "Company Info", SourceLabel.INDEPENDENT, "Company background"),
-            'alternatives': ("Tavily Search", "Alternatives", SourceLabel.INDEPENDENT, "Alternative products"),
-        }
-        
-        # Add NVD citation if CVE data exists
-        if cve_summary.citation:
-            url, name, label, claim = citation_map['nvd']
-            citations.append(Citation(
-                source_url=url,
-                source_type=name,
-                source_label=label,
-                accessed_date=datetime.now().strftime("%Y-%m-%d"),
-                claim=claim
-            ))
-        
-        # Add citations from additional_data
-        if state.additional_data:
-            for source_key, source_data in state.additional_data.items():
-                if source_key in citation_map and source_data:  # Only add if data exists
-                    url, name, label, claim = citation_map[source_key]
-                    citations.append(Citation(
-                        source_url=url,
-                        source_type=name,
-                        source_label=label,
-                        accessed_date=datetime.now().strftime("%Y-%m-%d"),
-                        claim=claim
-                    ))
-        
-        # Note insufficient data areas (updated to account for all sources)
-        insufficient_notes = []
-        
-        # Check CVE data
-        if not state.cve_data or not state.cve_data.get('data_available'):
-            insufficient_notes.append("CVE data unavailable")
-        
-        # Check vendor compliance data (including ToS, Privacy, DPA from additional_data)
-        has_compliance_data = False
-        if state.vendor_data and state.vendor_data.get('security_page_found'):
-            has_compliance_data = True
-        if state.additional_data:
-            if state.additional_data.get('tos') or state.additional_data.get('privacy') or state.additional_data.get('dpa'):
-                has_compliance_data = True
-        
-        if not has_compliance_data:
-            insufficient_notes.append("Limited vendor compliance documentation")
-        
-        # Check incident data (HIBP or Security News)
-        has_incident_data = False
-        if state.incident_data and state.incident_data.get('data_available'):
-            has_incident_data = True
-        if state.additional_data and state.additional_data.get('news'):
-            has_incident_data = True
-        
-        if not has_incident_data:
-            insufficient_notes.append("Incident data limited (paid APIs recommended)")
-        
+        # Assemble final CISO brief
         status_update.append("")
         status_update.append("  [Step 5/5] 📝 Assembling final CISO brief...")
         status_update.append("        ├─ Compiling assessment components")
@@ -1248,150 +899,39 @@ IMPORTANT:
         status_update.append("        ├─ Adding insufficiency notes")
         status_update.append("        └─ Formatting markdown output")
         
-        # Parse compliance data from all sources
-        gdpr_compliant = False
-        gdpr_source = "Unknown"
-        encryption_mentioned = False
-        encryption_source = "Not stated"
-        data_retention_policy = "Not specified"
-        third_party_sharing = "Not specified"
-        
-        # Extract ISO certifications from vendor_reputation
-        iso_certs = []
-        if vendor_reputation.claimed_certifications:
-            for cert in vendor_reputation.claimed_certifications:
-                if 'ISO' in cert:
-                    from .security_state import CertificationDetail
-                    iso_certs.append(CertificationDetail(
-                        certification_type=cert,
-                        status="claimed",
-                        source_label=SourceLabel.VENDOR_STATED
-                    ))
-        
-        # Parse ToS data
-        if state.additional_data and state.additional_data.get('tos'):
-            tos_data = state.additional_data['tos']
-            # Extract any compliance mentions from ToS
-            if tos_data.get('content'):
-                content_lower = tos_data['content'].lower()
-                if 'gdpr' in content_lower and not gdpr_compliant:
-                    gdpr_compliant = True
-                    gdpr_source = "ToS (vendor-stated)"
-                if 'encrypt' in content_lower:
-                    encryption_mentioned = True
-                    encryption_source = "ToS (vendor-stated)"
-                if 'retention' in content_lower or 'retain' in content_lower:
-                    data_retention_policy = "Mentioned in ToS (see document)"
-                if 'third party' in content_lower or 'third-party' in content_lower:
-                    third_party_sharing = "Mentioned in ToS (see document)"
-        
-        # Parse Company Info for vendor reputation enhancement
-        if state.additional_data and state.additional_data.get('company'):
-            company_data = state.additional_data['company']
-            if company_data.get('founded_year'):
-                try:
-                    from datetime import datetime
-                    founded_year = int(company_data['founded_year'])
-                    current_year = datetime.now().year
-                    company_age = current_year - founded_year
-                    
-                    # Update vendor reputation with company age
-                    if company_age >= 20:
-                        trust_score = min(100, trust_score + 5)
-                    elif company_age >= 10:
-                        trust_score = min(100, trust_score + 3)
-                except:
-                    pass
-        
-        # Parse Privacy Policy data
-        if state.additional_data and state.additional_data.get('privacy'):
-            privacy_data = state.additional_data['privacy']
-            if privacy_data.get('gdpr_compliance'):
-                gdpr_compliant = True
-                gdpr_source = "Privacy Policy (vendor-stated)"
-            if privacy_data.get('content'):
-                content_lower = privacy_data['content'].lower()
-                if 'encrypt' in content_lower and not encryption_mentioned:
-                    encryption_mentioned = True
-                    encryption_source = "Privacy Policy (vendor-stated)"
-                if ('retention' in content_lower or 'retain' in content_lower) and data_retention_policy == "Not specified":
-                    data_retention_policy = "Mentioned in Privacy Policy (see document)"
-                if ('third party' in content_lower or 'third-party' in content_lower) and third_party_sharing == "Not specified":
-                    third_party_sharing = "Mentioned in Privacy Policy (see document)"
-        
-        # Parse DPA data
-        if state.additional_data and state.additional_data.get('dpa'):
-            dpa_data = state.additional_data['dpa']
-            if dpa_data.get('gdpr_mentioned'):
-                gdpr_compliant = True
-                gdpr_source = "DPA (vendor-stated)"
-            if dpa_data.get('content'):
-                content_lower = dpa_data['content'].lower()
-                if 'encrypt' in content_lower and not encryption_mentioned:
-                    encryption_mentioned = True
-                    encryption_source = "DPA (vendor-stated)"
-                if ('retention' in content_lower or 'retain' in content_lower) and data_retention_policy == "Not specified":
-                    data_retention_policy = "Mentioned in DPA (see document)"
-        
-        # Fallback to vendor certifications for GDPR
-        if not gdpr_compliant and 'GDPR' in str(vendor_reputation.claimed_certifications):
-            gdpr_compliant = True
-            gdpr_source = "Vendor security page"
-        
-        # Determine SOC2 status
-        soc2_status = 'not_found'
-        if vendor_reputation.claimed_certifications:
-            for cert in vendor_reputation.claimed_certifications:
-                if 'SOC' in cert or 'SOC2' in cert or 'SOC 2' in cert:
-                    soc2_status = 'claimed'
-                    break
-        
-        # Create CISO brief using ONLY structured state data (no LLM hallucination)
-        ciso_brief = CISOBrief(
-            entity=entity_data,
-            taxonomy=taxonomy_data,
-            description=f"{entity_data.product_name} is a {taxonomy_data.primary_category} solution.",
-            usage=f"Typically used for {taxonomy_data.primary_category} purposes in enterprise environments.",
+        ciso_brief = assemble_ciso_brief(
+            entity_data=entity_data,
+            taxonomy_data=taxonomy_data,
             vendor_reputation=vendor_reputation,
             cve_summary=cve_summary,
-            incidents=incident_report,
-            compliance=ComplianceStatus(
-                soc2_status=soc2_status,
-                iso_certifications=iso_certs,
-                gdpr_compliant=gdpr_compliant,
-            ),
-            data_handling=DataHandling(
-                tos_url=entity_data.website,
-                encryption=encryption_mentioned,
-                data_retention=data_retention_policy,
-                third_party_sharing=third_party_sharing,
-                source_label=SourceLabel.VENDOR_STATED,
-            ),
-            deployment_controls="Standard SaaS deployment with admin controls (specifics require vendor documentation)",
+            incident_report=incident_report,
             trust_score=trust_score,
             risk_score=risk_score,
-            rationale=rationale[:1000],  # Use LLM-generated rationale but limit length
+            rationale=rationale,
             confidence=confidence,
-            safer_alternatives=alternatives,
-            all_citations=citations,
-            assessment_timestamp=datetime.now(),
-            insufficient_data_notes="; ".join(insufficient_notes) if insufficient_notes else None,
+            alternatives=alternatives,
+            citations=citations,
+            insufficient_notes=insufficient_notes,
+            soc2_status=soc2_status,
+            iso_certs=iso_certs_full,
+            gdpr_compliant=gdpr_compliant,
+            encryption_mentioned=encryption_full,
+            data_retention_policy=data_retention_policy,
+            third_party_sharing=third_party_sharing
         )
         
-        status_update.append("")
-        status_update.append("  ✓ CISO BRIEF GENERATED SUCCESSFULLY!")
-        status_update.append("")
-        status_update.append("  📋 Summary:")
-        status_update.append(f"     • Product: {entity_data.product_name}")
-        status_update.append(f"     • Category: {taxonomy_data.primary_category}")
-        status_update.append(f"     • Trust Score: {trust_score}/100")
-        status_update.append(f"     • Risk Score: {risk_score}/100")
-        status_update.append(f"     • Confidence: {confidence.value.upper()}")
-        status_update.append(f"     • CVEs Found: {cve_summary.total_cves}")
-        status_update.append(f"     • Breaches: {incident_report.breach_count}")
-        status_update.append(f"     • Citations: {len(citations)}")
-        status_update.append("")
-        status_update.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        # Format summary message
+        summary_messages = format_summary_message(
+            entity_data=entity_data,
+            taxonomy_data=taxonomy_data,
+            trust_score=trust_score,
+            risk_score=risk_score,
+            confidence=confidence,
+            cve_summary=cve_summary,
+            incident_report=incident_report,
+            citations=citations
+        )
+        status_update.extend(summary_messages)
         
         # Log Phase 4 results
         phase4_data = {
@@ -1503,4 +1043,3 @@ def assess_security(input_text: str, config: Optional[RunnableConfig] = None) ->
         print("Errors encountered:", result["errors"])
     
     return result.get("ciso_brief")
-

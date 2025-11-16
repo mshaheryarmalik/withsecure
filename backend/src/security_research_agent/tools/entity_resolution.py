@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 
+from ..llm_utils import init_gemini_model
 from ..security_state import (
     ConfidenceLevel,
     InputType,
@@ -282,11 +282,12 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
         else:
             page_content = "Tavily API key not configured"
         
-        # Use LLM with page data
-        model = init_chat_model(
-            "google_genai:gemini-2.5-flash",
+        # Use LLM with page data and thinking enabled
+        model = init_gemini_model(
+            model_name="gemini-2.5-flash",
             api_key=google_api_key,
-            temperature=0
+            temperature=0,
+            thinking_budget=1024
         )
         
         resolution_prompt = f"""You are analyzing a website URL to extract product and vendor information for a security assessment.
@@ -448,11 +449,12 @@ def _resolve_from_name(name: str) -> Dict[str, Any]:
             except Exception as e:
                 search_results = f"Search error: {str(e)}"
         
-        # Step 2: Use LLM with search results to extract entity information
-        model = init_chat_model(
-            "google_genai:gemini-2.5-flash",
+        # Step 2: Use LLM with search results and thinking enabled
+        model = init_gemini_model(
+            model_name="gemini-2.5-flash",
             api_key=google_api_key,
-            temperature=0
+            temperature=0,
+            thinking_budget=1024
         )
         
         resolution_prompt = f"""You are a security analyst resolving entity information for a CISO security assessment.
