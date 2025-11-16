@@ -37,12 +37,38 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
   const GRID_SIZE = 10; // Grid cell size in pixels (very granular for precision)
 
   const wittyRemarks = [
-    "🔐 Scanning the dark web for your secrets...",
-    "🤖 Training AI on your vulnerabilities...",
-    "🕵️ Investigating suspicious dependencies...",
-    "⚡ Hacking the mainframe...",
-    "🎯 Targeting attack vectors...",
-    "🔬 Analyzing threat landscape...",
+    "Having a tough day at work...",
+    "Existential crisis in progress...",
+    "Questioning life choices...",
+    "Pretending to work hard...",
+    "Waiting for coffee to kick in...",
+    "Convincing boss I'm productive...",
+    "Debugging my own existence...",
+    "Procrastinating productively...",
+    "Taking a mental health break...",
+    "Contemplating career change...",
+    "Just woke up from a nap...",
+    "Trying to look busy...",
+    "Searching for motivation...",
+    "Living the dream (nightmare?)...",
+    "Teaching AI the difference between 'secure' and 'swiss cheese'...",
+    "Checking if your password is still 'password123'...",
+    "Asking ChatGPT if your security is a joke (spoiler: it is)...",
+    "Hunting for vulnerabilities like it's Black Friday...",
+    "Reverse engineering your competitors' tears...",
+    "Brewing fresh CVEs... organic, free-range, artisanal...",
+    "Negotiating with the SSL certificate gods...",
+    "Calculating how many data breaches until Tuesday...",
+    "Searching for the 'any' key developers keep pressing...",
+    "Translating 'works on my machine' to actual security...",
+    "Checking if turning it off and on again fixes the RCE...",
+    "Auditing your trust issues (technical AND personal)...",
+    "Finding backdoors the vendor 'forgot' to mention...",
+    "Speed-running the OWASP Top 10 checklist...",
+    "Pinging the matrix... it's not answering...",
+    "Deploying security patches from 2003... eventually...",
+    "Simulating social engineering on your pet hamster...",
+    "Convincing the firewall it's doing a great job...",
   ];
 
   // Cycle through witty remarks every 3 seconds
@@ -52,7 +78,7 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [wittyRemarks.length]);
 
   // Update dimensions when container size changes
   useEffect(() => {
@@ -270,10 +296,49 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
     canvas.height = height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Clear canvas - no arrows needed
+    // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // NO ARROW DRAWING - just clear canvas for nodes to be visible
+    // Draw edges
+    edges.forEach(edge => {
+      const fromNode = nodes.find(n => n.id === edge.from);
+      const toNode = nodes.find(n => n.id === edge.to);
+      
+      if (!fromNode || !toNode) return;
+      
+      const startX = (fromNode.position.x / 100) * width;
+      const startY = (fromNode.position.y / 100) * height;
+      const endX = (toNode.position.x / 100) * width;
+      const endY = (toNode.position.y / 100) * height;
+      
+      // Draw line
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)'; // slate-500 with opacity
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Draw arrow at the end
+      const angle = Math.atan2(endY - startY, endX - startX);
+      const arrowLength = 10;
+      const arrowAngle = Math.PI / 6;
+      
+      ctx.beginPath();
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(
+        endX - arrowLength * Math.cos(angle - arrowAngle),
+        endY - arrowLength * Math.sin(angle - arrowAngle)
+      );
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(
+        endX - arrowLength * Math.cos(angle + arrowAngle),
+        endY - arrowLength * Math.sin(angle + arrowAngle)
+      );
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    });
   }, [nodes, edges, dimensions, animationProgress, panOffset]);
 
   const handleNodeDrag = (nodeId: string, position: { x: number; y: number }) => {
@@ -351,9 +416,9 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
   }, [nodes, dimensions]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-slate-950 overflow-hidden">
+    <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
       {/* Subtle grid background - Dark theme */}
-      <div className="absolute inset-0 opacity-20" style={{
+      <div className="absolute inset-0 opacity-10" style={{
         backgroundImage: `
           linear-gradient(to right, rgba(71, 85, 105, 0.3) 1px, transparent 1px),
           linear-gradient(to bottom, rgba(71, 85, 105, 0.3) 1px, transparent 1px)
@@ -394,20 +459,33 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
           ))}
         </div>
 
-        {/* Empty state */}
+        {/* Empty state with loader */}
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center">
+<<<<<<< HEAD
+              {/* Spinning Circle Loader */}
+              <div className="relative w-16 h-16 mx-auto mb-6">
+                <div 
+                  className="w-16 h-16 rounded-full border-4 border-slate-700 border-t-cyan-500 animate-spin"
+                ></div>
+              </div>
+              
+              {/* Witty remark */}
+              <div className="max-w-md mx-auto px-4">
+                <p key={wittyRemarkIndex} className="text-slate-400 text-sm italic animate-fadeIn">
+=======
               {/* Minimal spinner */}
               <div className="relative w-16 h-16 mx-auto mb-4">
-                <div className="absolute inset-0 border-3 border-slate-800 rounded-full"></div>
-                <div className="absolute inset-0 border-3 border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
+                <div className="absolute inset-0 border-3 border-slate-900 rounded-full"></div>
+                <div className="absolute inset-0 border-3 border-slate-500 rounded-full border-t-transparent animate-spin"></div>
               </div>
               
               {/* Witty remark */}
               <div className="space-y-2">
-                <p className="text-slate-400">Initializing Security Matrix...</p>
-                <p className="text-xs text-slate-500 italic">
+                <p className="text-slate-400 font-mono">Initializing Security Matrix...</p>
+                <p className="text-xs text-slate-500 italic font-mono">
+>>>>>>> 7ad940080105e9a2e760853b019852826fa5a2da
                   {wittyRemarks[wittyRemarkIndex]}
                 </p>
               </div>

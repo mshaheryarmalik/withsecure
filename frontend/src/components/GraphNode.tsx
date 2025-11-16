@@ -23,8 +23,8 @@ function EncryptedBackground({ status }: { status: string }) {
     if (!ctx) return;
     
     // Set canvas size
-    canvas.width = 120;
-    canvas.height = 60;
+    canvas.width = 200;
+    canvas.height = 100;
     
     const chars = '01アイウエオカキクケコ</>{}[]';
     const fontSize = 8;
@@ -77,7 +77,7 @@ function EncryptedBackground({ status }: { status: string }) {
     <canvas 
       ref={canvasRef} 
       className="absolute inset-0 opacity-30"
-      style={{ width: '120px', height: '60px' }}
+      style={{ width: '200px', height: '100px' }}
     />
   );
 }
@@ -175,24 +175,15 @@ export function GraphNode({ id, label, status, wittyRemark, details, position, a
           }
         `}
       </style>
-      <div className={`relative border-2 rounded-sm px-2 py-1.5 ${styles.border} ${styles.bg} ${styles.shadow} transition-all duration-300 w-[120px] h-[60px] flex flex-col justify-center overflow-hidden ${styles.glow} hover:scale-105`}>
+      <div className={`relative border-2 rounded-sm px-3 py-2 ${styles.border} ${styles.bg} ${styles.shadow} transition-all duration-300 w-[200px] h-[100px] flex flex-col justify-center overflow-hidden ${styles.glow} hover:scale-105`}>
         {/* Encrypted background */}
         <EncryptedBackground status={status} />
-        
-        {/* Status indicator */}
-        <div className="absolute -top-1 -right-1 z-10">
-          <div className={`w-3 h-3 rounded-full ${styles.dot} border-2 border-slate-950 ${styles.shadow}`}>
-            {status === 'active' && (
-              <div className={`absolute inset-0 rounded-full ${styles.ring} opacity-75`}></div>
-            )}
-          </div>
-        </div>
 
         {/* Content */}
-        <div className="flex items-start justify-between gap-1 relative z-10">
+        <div className="flex items-start justify-between gap-2 relative z-10">
           <div className="flex-1 min-w-0">
-            <div className="font-mono text-[10px] text-slate-200 mb-1 line-clamp-2 leading-tight tracking-tight">{label}</div>
-            <div className={`font-mono text-[8px] ${getTextColor()} line-clamp-1 tracking-tighter`}>
+            <div className="font-mono text-sm text-slate-200 mb-2 line-clamp-2 leading-tight tracking-tight">{label}</div>
+            <div className={`font-mono text-xs ${getTextColor()} line-clamp-2 tracking-tight`}>
               {wittyRemark}
             </div>
           </div>
@@ -203,10 +194,10 @@ export function GraphNode({ id, label, status, wittyRemark, details, position, a
                 e.stopPropagation();
                 setShowInfo(!showInfo);
               }}
-              className="flex-shrink-0 p-0.5 hover:bg-slate-700 rounded transition-colors"
+              className="flex-shrink-0 p-1 hover:bg-slate-700 rounded transition-colors"
               title="More info"
             >
-              <Info className="w-2.5 h-2.5 text-slate-400" />
+              <Info className="w-4 h-4 text-slate-400" />
             </button>
           )}
         </div>
