@@ -26,8 +26,9 @@ class AssessmentCache:
             self.cache_dir = backend_dir / ".cache" / "assessments"
         else:
             self.cache_dir = Path(cache_dir)
-            self.ttl_hours = ttl_hours
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.ttl_hours = ttl_hours
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_cache_key(
         self,
@@ -221,11 +222,11 @@ class AssessmentCache:
 _default_cache: Optional[AssessmentCache] = None
 
 
-def get_cache(cache_dir: str = ".cache/assessments", ttl_hours: int = 24) -> AssessmentCache:
+def get_cache(cache_dir: str | None = None, ttl_hours: int = 24) -> AssessmentCache:
     """Get or create the default cache instance.
     
     Args:
-        cache_dir: Directory to store cache files
+        cache_dir: Directory to store cache files. If None, uses default backend/.cache/assessments.
         ttl_hours: Time-to-live in hours
         
     Returns:

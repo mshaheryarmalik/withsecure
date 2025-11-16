@@ -177,18 +177,56 @@ certified. Some historical security incidents but strong compliance posture.
 - **Color-coded indicators** (✓ success, ✗ error, ⚠ warning)
 - **Progress tracking** through all 4 assessment stages
 
-### High-Signal Sources (Priority Order)
+### Data Sources (27 Sources)
 
-**Independent Sources:**
-- ✅ NVD (National Vulnerability Database) - CVE data
-- ✅ CISA KEV - Known Exploited Vulnerabilities
-- 🚧 CERT Advisories
-- 🚧 HaveIBeenPwned - Breach data (requires API subscription)
+Our security assessment pipeline aggregates data from **27 distinct sources** across multiple categories:
 
-**Vendor-Stated Sources:**
-- ✅ Vendor Security/PSIRT pages
-- ✅ Terms of Service & DPA
-- ✅ Compliance claims (SOC2, ISO, GDPR)
+#### Vulnerability & Security Advisories (4 sources)
+1. **NVD (National Vulnerability Database)** - CVE data, severity scores, vulnerability trends
+2. **CISA KEV (Known Exploited Vulnerabilities)** - Actively exploited vulnerabilities catalog
+3. **GitHub Security Advisories** - Open-source security advisories and vulnerability reports
+4. **US-CERT Advisories** - Security advisories from US-CERT (via Tavily search)
+
+#### Threat Intelligence (4 sources)
+5. **VirusTotal** - File reputation and malware detection for SHA1 hashes
+6. **MalwareBazaar** - Malware samples and threat intelligence database
+7. **URLhaus** - Malicious URL database and abuse tracking
+8. **AlienVault OTX** - Open Threat Exchange threat intelligence platform
+
+#### Breach & Incident Data (4 sources)
+9. **HaveIBeenPwned** - Data breach records and compromised account database
+10. **PrivacyRights Clearinghouse** - Data breach chronology and privacy incident tracking
+11. **DataBreaches.net** - Data breach news and incident reporting
+12. **Security News** - Security news articles and incident reports (via Tavily search)
+
+#### Compliance & Certifications (2 sources)
+13. **FedRAMP Marketplace** - Federal cloud compliance authorization database
+14. **Vendor Security Pages** - Scraped vendor security/PSIRT pages with compliance claims (SOC2, ISO, GDPR, HIPAA, PCI DSS)
+
+#### Legal & Policy Documents (3 sources)
+15. **Terms of Service** - Scraped vendor Terms of Service documents
+16. **Privacy Policy** - Scraped vendor Privacy Policy documents
+17. **Data Processing Agreement (DPA)** - Scraped DPA documents for data handling policies
+
+#### Security Advisories (1 source)
+18. **CERT/CC Advisories** - CERT Coordination Center security advisories (via Tavily search)
+
+#### Company & Domain Information (2 sources)
+19. **WHOIS** - Domain registration and ownership information
+20. **Company Information** - Company data and business intelligence (via Tavily search)
+
+#### Community & Discussion Forums (3 sources)
+21. **Reddit** - Security-related discussions and community insights (via Tavily search)
+22. **GitHub Issues** - Open-source security discussions and vulnerability reports (via Tavily search)
+23. **Stack Overflow** - Technical security discussions and solutions (via Tavily search)
+
+#### Product Alternatives (4 sources)
+24. **G2** - Product reviews and alternative recommendations (via Tavily search)
+25. **AlternativeTo** - Product alternatives and comparisons (via Tavily search)
+26. **Capterra** - Software marketplace and alternative suggestions (via Tavily search)
+27. **App Stores** - Chrome Web Store and Apple App Store privacy/permission information (via Tavily search)
+
+**Note:** All sources are labeled as either "vendor-stated" (from vendor's own pages) or "independent" (from third-party security databases and research organizations) for transparency and trust assessment.
 
 ### Assessment Components
 
