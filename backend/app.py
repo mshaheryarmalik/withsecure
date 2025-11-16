@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, AsyncIterator
 
 from dotenv import load_dotenv
@@ -14,8 +15,9 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from backend/.env regardless of current working directory
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_DIR / ".env")
 
 from src.security_research_agent.cache import get_cache
 from src.security_research_agent.ciso_assessor import (

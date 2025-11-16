@@ -43,35 +43,36 @@ Optional (but recommended):
 
 ```bash
 # Assess by product name
-python ciso_cli.py assess --product "Slack"
+python backend/ciso_cli.py assess --product "Slack"
 
 # Assess by URL
-python ciso_cli.py assess --url "https://slack.com"
+python backend/ciso_cli.py assess --url "https://slack.com"
 
 # Assess by SHA1 hash
-python ciso_cli.py assess --sha1 "a1b2c3d4e5f6..."
+python backend/ciso_cli.py assess --sha1 "a1b2c3d4e5f6..."
 
 # With version filtering
-python ciso_cli.py assess --product "Zoom" --version "5.14.5"
+python backend/ciso_cli.py assess --product "Zoom" --version "5.14.5"
 
 # Save as markdown report
-python ciso_cli.py assess --product "Dropbox" --output markdown --output-file report.md
+python backend/ciso_cli.py assess --product "Dropbox" --output markdown --output-file report.md
 
 # Save as JSON
-python ciso_cli.py assess --product "Salesforce" --output json --output-file assessment.json
+python backend/ciso_cli.py assess --product "Salesforce" --output json --output-file assessment.json
 
 # Disable cache (force fresh assessment)
-python ciso_cli.py assess --product "GitHub" --no-cache
+python backend/ciso_cli.py assess --product "GitHub" --no-cache
 ```
 
 #### Option B: REST API with Streaming
 
 ```bash
 # Start the API server
-python apps.py
+python backend/app.py
 
-# Or with uvicorn for production
-uvicorn apps:app --host 0.0.0.0 --port 8000 --workers 4
+# Or with uvicorn for production (from the backend directory)
+cd backend
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 **Test the API:**
