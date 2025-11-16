@@ -463,7 +463,6 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
         {nodes.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center">
-<<<<<<< HEAD
               {/* Spinning Circle Loader */}
               <div className="relative w-16 h-16 mx-auto mb-6">
                 <div 
@@ -474,18 +473,6 @@ export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanv
               {/* Witty remark */}
               <div className="max-w-md mx-auto px-4">
                 <p key={wittyRemarkIndex} className="text-slate-400 text-sm italic animate-fadeIn">
-=======
-              {/* Minimal spinner */}
-              <div className="relative w-16 h-16 mx-auto mb-4">
-                <div className="absolute inset-0 border-3 border-slate-900 rounded-full"></div>
-                <div className="absolute inset-0 border-3 border-slate-500 rounded-full border-t-transparent animate-spin"></div>
-              </div>
-              
-              {/* Witty remark */}
-              <div className="space-y-2">
-                <p className="text-slate-400 font-mono">Initializing Security Matrix...</p>
-                <p className="text-xs text-slate-500 italic font-mono">
->>>>>>> 7ad940080105e9a2e760853b019852826fa5a2da
                   {wittyRemarks[wittyRemarkIndex]}
                 </p>
               </div>

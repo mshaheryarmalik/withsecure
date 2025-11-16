@@ -40,7 +40,7 @@ function EncryptedBackground({ status }: { status: string }) {
       // Get color based on status
       let color = '#475569'; // slate-600 default
       if (status === 'active') color = '#06b6d4'; // cyan-500
-      else if (status === 'completed') color = '#94a3b8'; // slate-400
+      else if (status === 'completed') color = '#22c55e'; // green-500
       
       ctx.fillStyle = color;
       ctx.font = `${fontSize}px monospace`;
@@ -98,12 +98,12 @@ export function GraphNode({ id, label, status, wittyRemark, details, position, a
     switch (status) {
       case 'completed':
         return {
-          border: 'border-slate-500/60',
+          border: 'border-emerald-500/70',
           bg: 'bg-gradient-to-br from-slate-800 to-slate-900',
-          shadow: 'shadow-lg shadow-slate-500/10',
-          dot: 'bg-slate-400',
-          ring: 'ring-slate-400',
-          glow: 'before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-slate-500/10 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity'
+          shadow: 'shadow-lg shadow-emerald-500/20',
+          dot: 'bg-emerald-400',
+          ring: 'ring-emerald-400',
+          glow: 'before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-emerald-500/20 before:to-transparent before:opacity-0 hover:before:opacity-100 before:transition-opacity'
         };
       case 'active':
         return {
@@ -137,7 +137,7 @@ export function GraphNode({ id, label, status, wittyRemark, details, position, a
 
   const getTextColor = () => {
     switch (status) {
-      case 'completed': return 'text-slate-300';
+      case 'completed': return 'text-emerald-300';
       case 'active': return 'text-cyan-300';
       case 'pending': return 'text-slate-500';
       case 'error': return 'text-red-400';
