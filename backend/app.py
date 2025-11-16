@@ -44,7 +44,8 @@ app = FastAPI(
 # Examples:
 #   CORS_ORIGINS=http://localhost:3000,http://localhost:5173,https://example.com
 #   CORS_ORIGINS=*  (allows all origins - use with caution in production)
-cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+# For GCP/VM deployment, set CORS_ORIGINS=* to allow all origins
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
 if cors_origins_env == "*":
     cors_origins = ["*"]
 else:
