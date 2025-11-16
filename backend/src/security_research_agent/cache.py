@@ -29,10 +29,41 @@ class AssessmentCache:
             self.ttl_hours = ttl_hours
             self.cache_dir.mkdir(parents=True, exist_ok=True)
     
-    def _get_cache_key(self, input_text: str) -> str:
-        """Generate cache key from input text."""
-        # Normalize input
-        normalized = input_text.strip().lower()
+    def _get_cache_key(
+        self,
+        product: Optional[str] = None,
+        vendor: Optional[str] = None,
+        sha1: Optional[str] = None,
+        url: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> str:
+        """Generate cache key from all input fields.
+        
+        Args:
+            product: Product name
+            vendor: Vendor name
+            sha1: SHA1 hash
+            url: URL
+            version: Product version
+            
+        Returns:
+            SHA256 hash of normalized input fields
+        """
+        # Create a dictionary of all non-None fields, sorted for consistency
+        fields = {}
+        if product:
+            fields['product'] = product.strip().lower()
+        if vendor:
+            fields['vendor'] = vendor.strip().lower()
+        if sha1:
+            fields['sha1'] = sha1.strip().lower()
+        if url:
+            fields['url'] = url.strip().lower()
+        if version:
+            fields['version'] = version.strip().lower()
+        
+        # Convert to JSON string for hashing (ensures consistent ordering)
+        normalized = json.dumps(fields, sort_keys=True)
         # Generate SHA256 hash
         return hashlib.sha256(normalized.encode()).hexdigest()
     
@@ -40,17 +71,28 @@ class AssessmentCache:
         """Get path to cache file."""
         return self.cache_dir / f"{cache_key}.json"
     
-    def get(self, input_text: str) -> Optional[CISOBrief]:
+    def get(
+        self,
+        product: Optional[str] = None,
+        vendor: Optional[str] = None,
+        sha1: Optional[str] = None,
+        url: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> Optional[CISOBrief]:
         """Retrieve cached assessment if available and not expired.
         
         Args:
-            input_text: Original input text
+            product: Product name
+            vendor: Vendor name
+            sha1: SHA1 hash
+            url: URL
+            version: Product version
             
         Returns:
             CISOBrief if cached and valid, None otherwise
         """
         try:
-            cache_key = self._get_cache_key(input_text)
+            cache_key = self._get_cache_key(product, vendor, sha1, url, version)
             cache_path = self._get_cache_path(cache_key)
             
             if not cache_path.exists():
@@ -82,21 +124,37 @@ class AssessmentCache:
             print(f"Cache read error: {e}")
             return None
     
-    def set(self, input_text: str, brief: CISOBrief) -> None:
+    def set(
+        self,
+        brief: CISOBrief,
+        product: Optional[str] = None,
+        vendor: Optional[str] = None,
+        sha1: Optional[str] = None,
+        url: Optional[str] = None,
+        version: Optional[str] = None,
+    ) -> None:
         """Store assessment in cache.
         
         Args:
-            input_text: Original input text
             brief: CISOBrief to cache
+            product: Product name
+            vendor: Vendor name
+            sha1: SHA1 hash
+            url: URL
+            version: Product version
         """
         try:
-            cache_key = self._get_cache_key(input_text)
+            cache_key = self._get_cache_key(product, vendor, sha1, url, version)
             cache_path = self._get_cache_path(cache_key)
             
             # Prepare cache data
             cache_data = {
                 'cached_at': datetime.now().isoformat(),
-                'input_text': input_text,
+                'product': product,
+                'vendor': vendor,
+                'sha1': sha1,
+                'url': url,
+                'version': version,
                 'brief': brief.model_dump(mode='json'),
             }
             

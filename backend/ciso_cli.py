@@ -203,7 +203,14 @@ def assess_command(args):
     cache = get_cache(ttl_hours=args.cache_ttl) if not args.no_cache else None
     
     if cache and not args.no_cache:
-        cached_brief = cache.get(input_text)
+        product_version = getattr(args, 'version', None)
+        cached_brief = cache.get(
+            product=args.product,
+            vendor=args.vendor,
+            sha1=args.sha1,
+            url=args.url,
+            version=product_version
+        )
         if cached_brief:
             console.print("[green]✓[/green] Found cached assessment\n")
             output_brief(cached_brief, args.output, args.output_file)
@@ -258,7 +265,15 @@ def assess_command(args):
         
         # Cache result
         if cache and not args.no_cache:
-            cache.set(input_text, brief)
+            product_version = getattr(args, 'version', None)
+            cache.set(
+                brief,
+                product=args.product,
+                vendor=args.vendor,
+                sha1=args.sha1,
+                url=args.url,
+                version=product_version
+            )
         
         # Output
         output_brief(brief, args.output, args.output_file)

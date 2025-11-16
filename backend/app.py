@@ -127,7 +127,13 @@ async def health():
 
 
 async def assessment_generator(
-    input_text: str, product_version: Optional[str], use_cache: bool, cache_ttl: int
+    product: Optional[str],
+    vendor: Optional[str],
+    sha1: Optional[str],
+    url: Optional[str],
+    version: Optional[str],
+    use_cache: bool,
+    cache_ttl: int
 ) -> AsyncIterator[str]:
     """Generate Server-Sent Events for assessment progress.
     
@@ -138,11 +144,14 @@ async def assessment_generator(
     - error: Error message if assessment fails
     """
     try:
+        # Determine primary input for the assessment
+        input_text = sha1 or url or product or vendor
+        
         # Check cache first
         cache = get_cache(ttl_hours=cache_ttl) if use_cache else None
 
         if cache and use_cache:
-            cached_brief = cache.get(input_text)
+            cached_brief = cache.get(product=product, vendor=vendor, sha1=sha1, url=url, version=version)
             if cached_brief:
                 # Send cache hit event
                 yield f"event: phase\ndata: {json.dumps({'phase': 'cache', 'message': 'Found cached assessment'}, ensure_ascii=False)}\n\n"
@@ -160,7 +169,7 @@ async def assessment_generator(
         # Initialize state
         initial_state = AssessmentState(
             input_text=input_text,
-            product_version=product_version,
+            product_version=version,
             messages=[HumanMessage(content=f"Assess security for: {input_text}")],
         )
 
@@ -171,7 +180,9 @@ async def assessment_generator(
         brief = None
         errors = []
         current_phase = None
-        last_message_count = 0
+        # Track total number of messages sent to avoid duplicates
+        # Since status_messages accumulates across all nodes, we track globally
+        last_total_message_count = 0
 
         # Stream graph execution
         for event in graph.stream(initial_state, stream_mode="updates"):
@@ -200,16 +211,16 @@ async def assessment_generator(
 
                 # Send incremental updates as new messages arrive
                 if status_messages:
-                    # Detect phase change
+                    # Update current phase
                     if phase != current_phase:
                         current_phase = phase
-                        last_message_count = 0  # Reset counter for new phase
                     
                     # Get only NEW messages since last update
+                    # status_messages accumulates across all nodes, so we track globally
                     total_messages = len(status_messages)
-                    if total_messages > last_message_count:
-                        new_messages = status_messages[last_message_count:]
-                        last_message_count = total_messages
+                    if total_messages > last_total_message_count:
+                        new_messages = status_messages[last_total_message_count:]
+                        last_total_message_count = total_messages
                         
                         # Send the new messages
                         phase_data = {
@@ -237,7 +248,7 @@ async def assessment_generator(
         if brief:
             # Cache result
             if cache and use_cache:
-                cache.set(input_text, brief)
+                cache.set(brief, product=product, vendor=vendor, sha1=sha1, url=url, version=version)
 
             # Send final result
             result = brief.model_dump(mode='json')
@@ -301,8 +312,11 @@ async def assess_stream(request: AssessmentRequest):
     # Return streaming response with CORS headers
     return StreamingResponse(
         assessment_generator(
-            input_text=input_text,
-            product_version=request.version,
+            product=request.product,
+            vendor=request.vendor,
+            sha1=request.sha1,
+            url=request.url,
+            version=request.version,
             use_cache=not request.no_cache,
             cache_ttl=request.cache_ttl,
         ),
@@ -339,7 +353,13 @@ async def assess(request: AssessmentRequest):
         cache = get_cache(ttl_hours=request.cache_ttl) if not request.no_cache else None
 
         if cache and not request.no_cache:
-            cached_brief = cache.get(input_text)
+            cached_brief = cache.get(
+                product=request.product,
+                vendor=request.vendor,
+                sha1=request.sha1,
+                url=request.url,
+                version=request.version
+            )
             if cached_brief:
                 return AssessmentResponse(
                     success=True,
@@ -372,7 +392,14 @@ async def assess(request: AssessmentRequest):
         if brief:
             # Cache result
             if cache and not request.no_cache:
-                cache.set(input_text, brief)
+                cache.set(
+                    brief,
+                    product=request.product,
+                    vendor=request.vendor,
+                    sha1=request.sha1,
+                    url=request.url,
+                    version=request.version
+                )
 
             return AssessmentResponse(
                 success=True,
