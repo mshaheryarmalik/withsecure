@@ -52,12 +52,14 @@ else:
     cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
 
 # Add CORS middleware for frontend integration
+# Note: When allow_origins=["*"], allow_credentials must be False (CORS spec requirement)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=False if cors_origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -232,6 +234,21 @@ async def assessment_generator(
         await asyncio.sleep(0.01)
 
 
+@app.options("/assess/stream")
+async def assess_stream_options():
+    """Handle CORS preflight requests for /assess/stream endpoint."""
+    from fastapi.responses import Response
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "3600",
+        },
+    )
+
+
 @app.post("/assess/stream")
 async def assess_stream(request: AssessmentRequest):
     """Run security assessment with streaming progress updates.
@@ -259,7 +276,7 @@ async def assess_stream(request: AssessmentRequest):
             detail="Must provide at least one input (product, vendor, url, or sha1)",
         )
 
-    # Return streaming response
+    # Return streaming response with CORS headers
     return StreamingResponse(
         assessment_generator(
             input_text=input_text,
@@ -272,6 +289,9 @@ async def assess_stream(request: AssessmentRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable proxy buffering
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
         },
     )
 
