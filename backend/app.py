@@ -4,6 +4,7 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, AsyncIterator
@@ -19,8 +20,13 @@ from pydantic import BaseModel, Field
 BACKEND_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BACKEND_DIR / ".env")
 
-from src.security_research_agent.cache import get_cache
-from src.security_research_agent.ciso_assessor import (
+# Ensure the src directory is on the Python path so we can import the package
+SRC_DIR = BACKEND_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from security_research_agent.cache import get_cache
+from security_research_agent.ciso_assessor import (
     create_ciso_assessor_graph,
     AssessmentState,
 )
