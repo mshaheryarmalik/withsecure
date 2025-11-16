@@ -25,6 +25,7 @@ interface Phase {
   status: 'pending' | 'active' | 'completed' | 'error';
   progress?: number;
   steps: Step[];
+  currentStep?: string; // Current step message from stream
 }
 
 interface LogEntry {
@@ -112,7 +113,7 @@ export default function App() {
     setIsProcessing(true);
     setAssessmentData(null);
 
-    // Initialize all 4 phases with pending status
+    // Initialize all 4 phases with pending status (no dummy steps)
     const initialPhases: Phase[] = [
       {
         id: 'phase_1',
@@ -120,12 +121,7 @@ export default function App() {
         description: 'Identifying the product, vendor, and website from your input',
         status: 'pending',
         progress: 0,
-        steps: [
-          { id: 'detect_input', message: 'Analyzing input type (SHA1/URL/Name)', detail: 'Determining the best resolution strategy', status: 'pending' },
-          { id: 'search_entity', message: 'Searching security databases and web sources', detail: 'Querying VirusTotal, Tavily, and other sources', status: 'pending', sources: ['VirusTotal', 'Tavily'] },
-          { id: 'resolve_fields', message: 'Filling missing product and vendor details', detail: 'Ensuring complete entity information', status: 'pending' },
-          { id: 'validate_entity', message: 'Validating entity identification', detail: 'Confirming we have enough data to proceed', status: 'pending' }
-        ]
+        steps: []
       },
       {
         id: 'phase_2',
@@ -133,11 +129,7 @@ export default function App() {
         description: 'Categorizing the software using AI and industry taxonomies',
         status: 'pending',
         progress: 0,
-        steps: [
-          { id: 'analyze_product', message: 'Analyzing product characteristics', detail: 'Understanding product type and purpose', status: 'pending' },
-          { id: 'match_categories', message: 'Matching against 868 Gartner categories', detail: 'Finding primary and secondary categories', status: 'pending' },
-          { id: 'assign_taxonomy', message: 'Assigning software taxonomy', detail: 'Classification complete with confidence level', status: 'pending' }
-        ]
+        steps: []
       },
       {
         id: 'phase_3',
@@ -145,15 +137,7 @@ export default function App() {
         description: 'Collecting security intelligence from 15+ trusted sources',
         status: 'pending',
         progress: 0,
-        steps: [
-          { id: 'version_detection', message: 'Detecting latest product version', detail: 'Required for accurate CVE matching', optional: true, status: 'pending' },
-          { id: 'vulnerability_scan', message: 'Scanning vulnerability databases', detail: 'Checking NVD, GitHub Advisories, US-CERT', status: 'pending', sources: ['NVD', 'GitHub Advisories', 'US-CERT'] },
-          { id: 'vendor_compliance', message: 'Analyzing vendor compliance posture', detail: 'Checking security pages, ToS, Privacy Policy, FedRAMP', status: 'pending', sources: ['Security Page', 'ToS', 'Privacy Policy', 'DPA', 'FedRAMP'] },
-          { id: 'breach_incidents', message: 'Checking breach and incident history', detail: 'Querying HaveIBeenPwned and security news', status: 'pending', sources: ['HaveIBeenPwned', 'Security News'] },
-          { id: 'threat_intel', message: 'Gathering threat intelligence', detail: 'Checking malware databases and threat feeds', status: 'pending', sources: ['MalwareBazaar', 'URLhaus', 'AlienVault OTX'] },
-          { id: 'company_info', message: 'Collecting company and domain information', detail: 'WHOIS lookup and company background', status: 'pending', sources: ['WHOIS', 'Company Database'] },
-          { id: 'alternatives', message: 'Finding alternative products', detail: 'Searching G2 and AlternativeTo databases', status: 'pending', sources: ['G2', 'AlternativeTo'] }
-        ]
+        steps: []
       },
       {
         id: 'phase_4',
@@ -161,13 +145,7 @@ export default function App() {
         description: 'Synthesizing findings into a CISO-ready security assessment',
         status: 'pending',
         progress: 0,
-        steps: [
-          { id: 'analyze_security', message: 'Analyzing security posture with AI', detail: 'Evaluating CVE severity, trends, and vendor transparency', status: 'pending' },
-          { id: 'calculate_scores', message: 'Calculating trust and risk scores', detail: 'Scoring based on vulnerabilities, breaches, and compliance', status: 'pending' },
-          { id: 'extract_alternatives', message: 'Identifying safer alternatives', detail: 'Using AI to recommend comparable products', status: 'pending' },
-          { id: 'build_citations', message: 'Compiling source citations', detail: 'Labeling vendor-stated vs independent sources', status: 'pending' },
-          { id: 'generate_brief', message: 'Generating final CISO brief', detail: 'Creating structured assessment with rationale', status: 'pending' }
-        ]
+        steps: []
       }
     ];
 
@@ -330,34 +308,36 @@ export default function App() {
       return;
     }
 
-    // Update phase status
+    // Update phase status and extract actual steps from messages
     setPhases(prev => prev.map(p => {
       if (p.id === phaseId) {
         // Mark this phase as active
-        const updatedPhase = { ...p, status: 'active' as const };
+        const updatedPhase = { ...p, status: 'active' as const, currentStep: step || '' };
         
-        // Update progress based on step
-        if (step) {
-          // Try to match step to a step in the phase
-          const stepIndex = updatedPhase.steps.findIndex(s => 
-            s.message.toLowerCase().includes(step.toLowerCase()) ||
-            s.detail.toLowerCase().includes(step.toLowerCase())
-          );
+        // Extract meaningful steps from messages
+        if (messages && messages.length > 0) {
+          const newSteps: Step[] = [];
+          messages.forEach((msg, idx) => {
+            // Only add meaningful messages as steps
+            if (isMeaningfulMessage(msg, phaseId)) {
+              // Check if step already exists
+              const existingStep = updatedPhase.steps.find(s => s.message === msg);
+              if (!existingStep) {
+                newSteps.push({
+                  id: `step-${phaseId}-${Date.now()}-${idx}`,
+                  message: msg,
+                  detail: msg,
+                  status: 'active' as const
+                });
+              }
+            }
+          });
           
-          if (stepIndex >= 0) {
-            // Mark previous steps as completed, current as active
-            updatedPhase.steps = updatedPhase.steps.map((s, i) => {
-              if (i < stepIndex) return { ...s, status: 'completed' as const };
-              if (i === stepIndex) return { ...s, status: 'active' as const };
-              return s;
-            });
-          }
-          
-          // Calculate progress (rough estimate)
-          const activeStepIndex = updatedPhase.steps.findIndex(s => s.status === 'active');
-          if (activeStepIndex >= 0) {
-            updatedPhase.progress = Math.min(100, ((activeStepIndex + 1) / updatedPhase.steps.length) * 100);
-          }
+          // Mark previous steps as completed, add new ones
+          updatedPhase.steps = [
+            ...updatedPhase.steps.map(s => ({ ...s, status: 'completed' as const })),
+            ...newSteps
+          ];
         }
         
         return updatedPhase;
@@ -385,7 +365,6 @@ export default function App() {
         }
       });
     }
-    // Don't add step messages to activity log (they're shown in phase canvas)
   };
 
   const handleResultEvent = (event: ResultEvent) => {
@@ -472,9 +451,9 @@ export default function App() {
 
   return (
     <>
-      <div className="h-screen flex flex-col bg-black" style={{ fontFamily: "'Courier New', Courier, monospace" }}>
+      <div className="h-screen flex flex-col bg-slate-950" style={{ fontFamily: "'Courier New', Courier, monospace" }}>
         {/* Input Section with Logo */}
-        <div className="border-b border-slate-800 bg-black shadow-lg shadow-slate-900/50">
+        <div className="border-b border-slate-700 bg-slate-950 shadow-lg shadow-slate-900/50">
           <form onSubmit={handleSubmit} className="flex flex-col">
             {/* Main Input Row */}
             <div className="w-full flex items-center gap-2 md:gap-4 px-2 md:px-6 py-2.5">
@@ -489,10 +468,10 @@ export default function App() {
                   value={product}
                   onChange={(e) => setProduct(e.target.value)}
                   placeholder="Enter product name to assess..."
-                  className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-gradient-to-r from-slate-900 to-slate-800 border text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-sm md:text-base transition-all ${
+                  className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-gradient-to-r from-slate-800 to-slate-700 border text-slate-100 placeholder-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-sm md:text-base transition-all ${
                     !product.trim() && !sha1.trim() && !url.trim()
-                      ? 'border-slate-600 shadow-[0_0_15px_rgba(148,163,184,0.3)] animate-pulse-glow' 
-                      : 'border-slate-700'
+                      ? 'border-slate-500 shadow-[0_0_15px_rgba(148,163,184,0.3)] animate-pulse-glow' 
+                      : 'border-slate-600'
                   }`}
                   style={{ fontFamily: "'Inter', sans-serif" }}
                 />
@@ -502,15 +481,15 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowAdditionalFilters(!showAdditionalFilters)}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-slate-800/80 to-slate-700/60 hover:from-slate-700/80 hover:to-slate-600/60 border border-slate-700 hover:border-slate-600 rounded-lg transition-all group"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-gradient-to-r from-slate-700/80 to-slate-600/60 hover:from-slate-600/80 hover:to-slate-500/60 border border-slate-600 hover:border-slate-500 rounded-lg transition-all group"
                 title="Additional Filters"
               >
-                <Filter className="w-4 h-4 md:w-5 md:h-5 text-slate-400 group-hover:text-slate-300 transition-colors" />
-                <span className="hidden md:inline text-xs text-slate-400 group-hover:text-slate-300 uppercase tracking-wide font-mono transition-colors">Filters</span>
+                <Filter className="w-4 h-4 md:w-5 md:h-5 text-slate-200 group-hover:text-slate-100 transition-colors" />
+                <span className="hidden md:inline text-xs text-slate-200 group-hover:text-slate-100 uppercase tracking-wide font-mono transition-colors">Filters</span>
                 {showAdditionalFilters ? (
-                  <ChevronUp className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 group-hover:text-slate-400 transition-colors" />
+                  <ChevronUp className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-300 group-hover:text-slate-200 transition-colors" />
                 ) : (
-                  <ChevronDown className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-500 group-hover:text-slate-400 transition-colors" />
+                  <ChevronDown className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-300 group-hover:text-slate-200 transition-colors" />
                 )}
               </button>
               
@@ -519,7 +498,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={!product.trim() && !sha1.trim() && !url.trim()}
-                  className="p-2 text-slate-400 hover:text-slate-200 disabled:text-slate-700 disabled:cursor-not-allowed transition-all bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700 disabled:border-slate-800"
+                  className="p-2 text-slate-200 hover:text-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed transition-all bg-slate-700/50 hover:bg-slate-600/50 rounded-lg border border-slate-600 disabled:border-slate-700"
                   title="Start Assessment"
                 >
                   <Brain className="w-5 h-5 md:w-6 md:h-6" />
@@ -533,8 +512,8 @@ export default function App() {
                       <div className="absolute inset-0 w-2 h-2 md:w-2.5 md:h-2.5 bg-slate-400 rounded-full animate-ping"></div>
                     </div>
                     <div className="hidden md:block">
-                      <div className="text-xs text-slate-400 uppercase tracking-wide font-mono">Processing</div>
-                      <div className="text-xs text-slate-300" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500 }}>{completedPhases} / {totalPhases}</div>
+                      <div className="text-xs text-slate-200 uppercase tracking-wide font-mono">Processing</div>
+                      <div className="text-xs text-slate-100" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500 }}>{completedPhases} / {totalPhases}</div>
                     </div>
                   </div>
                 )}
@@ -542,8 +521,8 @@ export default function App() {
                   <div className="flex items-center gap-1.5 animate-fadeIn">
                     <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-green-500 rounded-full"></div>
                     <div className="hidden md:block">
-                      <div className="text-xs text-slate-400 uppercase tracking-wide font-mono">Complete</div>
-                      <div className="text-xs text-slate-300" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500 }}>Ready</div>
+                      <div className="text-xs text-slate-200 uppercase tracking-wide font-mono">Complete</div>
+                      <div className="text-xs text-slate-100" style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500 }}>Ready</div>
                     </div>
                   </div>
                 )}
@@ -552,7 +531,7 @@ export default function App() {
             
             {/* Additional Filters Dropdown */}
             {showAdditionalFilters && (
-              <div className="px-2 md:px-6 pb-2.5 border-t border-slate-800 pt-3 animate-fadeIn">
+              <div className="px-2 md:px-6 pb-2.5 border-t border-slate-700 pt-3 animate-fadeIn">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   {/* Vendor Name */}
                   <input
@@ -560,7 +539,7 @@ export default function App() {
                     value={vendor}
                     onChange={(e) => setVendor(e.target.value)}
                     placeholder="Vendor name"
-                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-900/90 to-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all"
+                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-800/90 to-slate-700/90 border border-slate-600 text-slate-100 placeholder-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-xs md:text-sm transition-all"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   />
                   
@@ -570,7 +549,7 @@ export default function App() {
                     value={sha1}
                     onChange={(e) => setSha1(e.target.value)}
                     placeholder="SHA1 hash"
-                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-900/90 to-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all font-mono"
+                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-800/90 to-slate-700/90 border border-slate-600 text-slate-100 placeholder-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-xs md:text-sm transition-all font-mono"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   />
                   
@@ -580,7 +559,7 @@ export default function App() {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     placeholder="URL"
-                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-900/90 to-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all"
+                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-800/90 to-slate-700/90 border border-slate-600 text-slate-100 placeholder-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-xs md:text-sm transition-all"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   />
                   
@@ -590,7 +569,7 @@ export default function App() {
                     value={version}
                     onChange={(e) => setVersion(e.target.value)}
                     placeholder="Version"
-                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-900/90 to-slate-800/90 border border-slate-700 text-slate-200 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-xs md:text-sm transition-all"
+                    className="w-full px-3 py-2 bg-gradient-to-r from-slate-800/90 to-slate-700/90 border border-slate-600 text-slate-100 placeholder-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent text-xs md:text-sm transition-all"
                     style={{ fontFamily: "'Inter', sans-serif" }}
                   />
                 </div>
@@ -602,7 +581,7 @@ export default function App() {
         {/* Main Content - Full Width Canvas */}
         <div className="flex-1 overflow-hidden relative">
           <div className="w-full h-full flex flex-col">
-            <div className="px-4 md:px-6 py-3 border-b border-slate-800 bg-black flex items-center justify-between">
+            <div className="px-4 md:px-6 py-3 border-b border-slate-700 bg-slate-950 flex items-center justify-between">
               <div className="flex items-center gap-4">
               </div>
               {/* Center: View Report button - center aligned on mobile */}
@@ -624,14 +603,14 @@ export default function App() {
                   className="p-1.5 hover:bg-slate-900 rounded-sm transition-colors border border-slate-800 hover:border-slate-700"
                   title="Activity Log"
                 >
-                  <Activity className="w-4 h-4 text-slate-400" />
+                  <Activity className="w-4 h-4 text-slate-200" />
                 </button>
                 <button
                   onClick={() => setCliTerminalOpen(true)}
                   className="p-1.5 hover:bg-slate-900 rounded-sm transition-colors border border-slate-800 hover:border-slate-700"
                   title="CLI Terminal"
                 >
-                  <Terminal className="w-4 h-4 text-slate-400" />
+                  <Terminal className="w-4 h-4 text-slate-200" />
                 </button>
               </div>
             </div>

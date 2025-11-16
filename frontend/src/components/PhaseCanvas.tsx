@@ -1,7 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { PhaseCard } from './PhaseCard';
 import { PhaseDetailsModal } from './PhaseDetailsModal';
-import { FileText, Search } from 'lucide-react';
+import { FileText, Search, Sparkles, Brain, Zap, Shield } from 'lucide-react';
+
+// Add fade-in animation style
+const fadeInStyle = `
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fadeIn {
+    animation: fadeIn 0.8s ease-out forwards;
+  }
+`;
 
 interface Phase {
   id: string;
@@ -31,19 +48,33 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
   const GRID_SIZE = 10;
 
   const wittyRemarks = [
-    "Scanning the dark web for your secrets...",
-    "Training AI on your vulnerabilities...",
-    "Investigating suspicious dependencies...",
-    "Hacking the mainframe...",
-    "Targeting attack vectors...",
-    "Analyzing threat landscape...",
+    "🔍 Ready to dissect your software's digital DNA...",
+    "🛡️ Your security assessment awaits, brave explorer...",
+    "⚡ Waiting for a product name like a detective waits for clues...",
+    "🎯 Enter a product and watch the magic happen...",
+    "🧠 Our AI is ready to analyze your security posture...",
+    "🔐 Your next security assessment is just a search away...",
+    "💡 Pro tip: We've analyzed thousands of products. Yours could be next!",
+    "🎪 Welcome to the security assessment circus! Enter a product to start...",
+    "🚀 Ready to launch your security investigation?",
+    "🎨 We turn security data into beautiful insights...",
+    "🔬 Our security microscope is calibrated and ready...",
+    "📊 Waiting to generate your personalized security report...",
+    "🎭 The stage is set. Enter your product to begin the show...",
+    "🌊 Dive into the depths of security analysis...",
+    "🎯 Precision security assessment, coming right up...",
+    "✨ Your security insights are just one product name away...",
+    "🎪 Step right up! Enter a product for a security deep-dive...",
+    "🔮 We predict security risks. Enter a product to see how...",
+    "🎨 Crafting security assessments, one product at a time...",
+    "🚀 Ready to explore the security universe? Enter a product...",
   ];
 
-  // Cycle through witty remarks every 3 seconds
+  // Cycle through witty remarks every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setWittyRemarkIndex((prev) => (prev + 1) % wittyRemarks.length);
-    }, 3000);
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -120,18 +151,21 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
           ctx.moveTo(fromX, fromY);
           ctx.lineTo(toX, toY);
           
-          // Color based on status
+          // Color based on status with color scheme
           const fromPhase = phases[i];
           const toPhase = phases[i + 1];
           
           if (fromPhase.status === 'completed' && toPhase.status === 'active') {
-            ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+            ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)'; // Yellow for active
             ctx.lineWidth = 2;
           } else if (fromPhase.status === 'completed' && toPhase.status === 'completed') {
-            ctx.strokeStyle = 'rgba(100, 116, 139, 0.4)';
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)'; // Green for completed
+            ctx.lineWidth = 2;
+          } else if (fromPhase.status === 'error' || toPhase.status === 'error') {
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'; // Red for error
             ctx.lineWidth = 2;
           } else {
-            ctx.strokeStyle = 'rgba(51, 65, 85, 0.3)';
+            ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)'; // Grey for pending
             ctx.lineWidth = 1;
           }
           
@@ -199,7 +233,9 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
   const positions = getPhasePositions();
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
+    <>
+      <style>{fadeInStyle}</style>
+      <div ref={containerRef} className="relative w-full h-full bg-black overflow-hidden">
       {/* Dotted grid background */}
       <div 
         className="absolute inset-0" 
@@ -230,29 +266,33 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
       {/* Empty state */}
       {phases.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center max-w-md mx-auto">
-            {/* Icon */}
-            <div className="relative w-20 h-20 mx-auto mb-6">
-              <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-800 rounded-sm border border-slate-700 flex items-center justify-center">
-                <Search className="w-10 h-10 text-slate-400" />
+          <div className="text-center max-w-lg mx-auto px-4 flex flex-col items-center">
+            {/* Animated Icon - Rotates with witty remarks */}
+            <div className="relative w-[32rem] h-[32rem] mb-8 flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/30 via-blue-500/30 to-purple-500/30 rounded-full border-2 border-cyan-500/40 flex items-center justify-center animate-pulse">
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/15 via-blue-500/15 to-purple-500/15 rounded-full animate-ping"></div>
+              </div>
+              <div className="relative z-10">
+                {wittyRemarkIndex % 4 === 0 && <Sparkles className="w-64 h-64 text-cyan-300 animate-bounce" />}
+                {wittyRemarkIndex % 4 === 1 && <Brain className="w-64 h-64 text-blue-300 animate-bounce" />}
+                {wittyRemarkIndex % 4 === 2 && <Zap className="w-64 h-64 text-purple-300 animate-bounce" />}
+                {wittyRemarkIndex % 4 === 3 && <Shield className="w-64 h-64 text-cyan-300 animate-bounce" />}
               </div>
             </div>
             
-            {/* Instructions */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-mono bg-gradient-to-r from-slate-300 to-slate-400 bg-clip-text text-transparent">
-                Ready for Security Assessment
-              </h3>
-              <p className="text-sm text-slate-400 font-mono leading-relaxed">
-                Enter a product name, vendor, or software asset in the search box above to begin automated security analysis
-              </p>
-              <div className="mt-6 space-y-2">
-                <p className="text-xs text-slate-500 font-mono uppercase tracking-wide">Example Queries:</p>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-slate-600 font-mono">• Apache Log4j 2.14</span>
-                  <span className="text-xs text-slate-600 font-mono">• Okta Identity Cloud</span>
-                  <span className="text-xs text-slate-600 font-mono">• MongoDB Enterprise</span>
-                </div>
+            {/* Witty Remarks */}
+            <div className="w-full">
+              <div className="min-h-[80px] flex items-center justify-center">
+                <p className="text-lg md:text-xl font-mono text-slate-100 leading-relaxed animate-fadeIn px-4">
+                  {wittyRemarks[wittyRemarkIndex]}
+                </p>
+              </div>
+              
+              {/* Subtle hint */}
+              <div className="mt-8 pt-6 border-t border-slate-700/50">
+                <p className="text-xs text-slate-400 font-mono italic">
+                  💡 Tip: Try entering a product name, vendor, SHA1 hash, or URL above
+                </p>
               </div>
             </div>
           </div>
@@ -278,5 +318,6 @@ export function PhaseCanvas({ phases, reportReady, onViewReport }: PhaseCanvasPr
         </button>
       )}
     </div>
+    </>
   );
 }

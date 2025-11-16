@@ -82,16 +82,16 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-6">
-      <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-xl shadow-2xl shadow-cyan-500/20 border border-cyan-500/20 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl shadow-2xl shadow-cyan-500/20 border border-cyan-500/20 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-slate-600 to-slate-800 rounded-lg border border-slate-500 shadow-lg shadow-slate-700/50">
-              <Shield className="w-5 h-5 md:w-6 md:h-6 text-black" />
+            <div className="p-2 bg-gradient-to-br from-slate-500 to-slate-700 rounded-lg border border-slate-400 shadow-lg shadow-slate-600/50">
+              <Shield className="w-5 h-5 md:w-6 md:h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-lg md:text-xl text-[rgb(255,255,255)]">Security Assessment Report</h2>
-              <p className="text-xs md:text-sm text-slate-400 font-[Inter]">{query}</p>
+              <h2 className="text-lg md:text-xl text-white">Security Assessment Report</h2>
+              <p className="text-xs md:text-sm text-slate-200 font-[Inter]">{query}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
@@ -105,9 +105,9 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800/50 rounded-lg transition-colors border border-slate-700/50 hover:border-cyan-500/30"
+              className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors border border-slate-600/50 hover:border-cyan-500/30"
             >
-              <X className="w-5 h-5 text-slate-400 hover:text-cyan-400" />
+              <X className="w-5 h-5 text-slate-200 hover:text-cyan-300" />
             </button>
           </div>
         </div>
@@ -116,7 +116,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Executive Summary */}
           <div className="mb-6">
-            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-slate-100 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Executive Summary
             </h3>
@@ -124,7 +124,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
               <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-3 md:p-4 hover:border-cyan-500/40 transition-all">
                 <div className="text-xs md:text-sm text-cyan-400 mb-1">Trust Score</div>
                 <div className="text-3xl md:text-4xl text-cyan-300 mb-2">{assessment.trust_score}</div>
-                <div className="text-xs text-slate-400 font-[Inter]">
+                <div className="text-xs text-slate-200 font-[Inter]">
                   {assessment.trust_score >= 70 ? 'Low Risk' : assessment.trust_score >= 40 ? 'Moderate Risk' : 'High Risk'}
                 </div>
               </div>
@@ -139,7 +139,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
               <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/30 backdrop-blur-sm border border-amber-500/20 rounded-lg p-3 md:p-4 hover:border-amber-500/40 transition-all">
                 <div className="text-xs md:text-sm text-amber-400 mb-1">Critical CVEs</div>
                 <div className="text-3xl md:text-4xl text-amber-300 mb-2">{assessment.cve_summary.critical_count}</div>
-                <div className="text-xs text-slate-400">CISA KEV: {assessment.cve_summary.cisa_kev_count}</div>
+                <div className="text-xs text-slate-200">CISA KEV: {assessment.cve_summary.cisa_kev_count}</div>
               </div>
               <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 backdrop-blur-sm border border-green-500/20 rounded-lg p-3 md:p-4 hover:border-green-500/40 transition-all">
                 <div className="text-xs md:text-sm text-green-400 mb-1">Confidence</div>
@@ -155,8 +155,8 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
           {/* Visualizations Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6">
             {/* Vulnerability Distribution */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-100 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Vulnerability Distribution
               </h4>
@@ -183,8 +183,8 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
             </div>
 
             {/* Security Score Radar */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-100 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Security Score Breakdown
               </h4>
@@ -207,12 +207,12 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
             </div>
 
             {/* Entity Information */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-100 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Entity Information
               </h4>
-              <div className="space-y-2 text-xs text-slate-300">
+              <div className="space-y-2 text-xs text-slate-100">
                 <div><strong className="text-cyan-400">Product:</strong> {assessment.entity.product_name}</div>
                 <div><strong className="text-cyan-400">Vendor:</strong> {assessment.entity.vendor_name}</div>
                 {assessment.entity.website && <div><strong className="text-cyan-400">Website:</strong> <a href={assessment.entity.website} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">{assessment.entity.website}</a></div>}
@@ -224,8 +224,8 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
             </div>
 
             {/* Compliance Pie */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-100 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Compliance Status
               </h4>
@@ -272,7 +272,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
                     <div className="text-xs md:text-sm text-red-300">
                       {cve.severity}: {cve.cve_id} {cve.in_cisa_kev && '(CISA KEV)'}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
+                    <div className="text-xs text-slate-200 mt-1">
                       {cve.description || 'No description available'}
                       {cve.cvss_score && ` (CVSS: ${cve.cvss_score})`}
                     </div>
@@ -284,7 +284,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
                   <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <div className="text-xs md:text-sm text-amber-300">Security Incidents Detected</div>
-                    <div className="text-xs text-slate-400 mt-1">{assessment.incidents.breach_count} breach(es) found in security databases.</div>
+                    <div className="text-xs text-slate-200 mt-1">{assessment.incidents.breach_count} breach(es) found in security databases.</div>
                   </div>
                 </div>
               )}
@@ -293,7 +293,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
                   <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-400 flex-shrink-0 mt-0.5" />
                   <div>
                     <div className="text-xs md:text-sm text-green-300">Vendor Security Transparency</div>
-                    <div className="text-xs text-slate-400 mt-1">Security page found. {assessment.vendor_reputation.security_advisories_found} advisory/advisories published.</div>
+                    <div className="text-xs text-slate-200 mt-1">Security page found. {assessment.vendor_reputation.security_advisories_found} advisory/advisories published.</div>
                   </div>
                 </div>
               )}
@@ -302,12 +302,12 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
 
           {/* Product Overview */}
           <div className="mb-6">
-            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-slate-100 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Product Overview
             </h3>
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 md:p-6">
-              <div className="space-y-3 text-xs md:text-sm text-slate-300">
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4 md:p-6">
+              <div className="space-y-3 text-xs md:text-sm text-slate-100">
                 <div>
                   <strong className="text-cyan-400">Category:</strong> {assessment.taxonomy.primary_category}
                 </div>
@@ -328,69 +328,69 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
 
           {/* Security Posture Details */}
           <div className="mb-6">
-            <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-slate-100 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Security Posture
             </h3>
             <div className="space-y-4">
               {/* CVE Summary */}
-              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+              <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                 <h4 className="text-sm text-cyan-400 mb-3">CVE Summary ({assessment.cve_summary.source_label})</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <div className="text-slate-400">Total CVEs</div>
-                    <div className="text-slate-200 font-semibold">{assessment.cve_summary.total_cves}</div>
+                    <div className="text-slate-200">Total CVEs</div>
+                    <div className="text-slate-100 font-semibold">{assessment.cve_summary.total_cves}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Critical</div>
+                    <div className="text-slate-200">Critical</div>
                     <div className="text-red-300 font-semibold">{assessment.cve_summary.critical_count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">High</div>
+                    <div className="text-slate-200">High</div>
                     <div className="text-orange-300 font-semibold">{assessment.cve_summary.high_count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Medium</div>
+                    <div className="text-slate-200">Medium</div>
                     <div className="text-yellow-300 font-semibold">{assessment.cve_summary.medium_count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Low</div>
+                    <div className="text-slate-200">Low</div>
                     <div className="text-green-300 font-semibold">{assessment.cve_summary.low_count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">CISA KEV</div>
+                    <div className="text-slate-200">CISA KEV</div>
                     <div className="text-red-300 font-semibold">{assessment.cve_summary.cisa_kev_count}</div>
                   </div>
                   <div className="col-span-2">
-                    <div className="text-slate-400">Trend</div>
-                    <div className="text-slate-200 font-semibold capitalize">{assessment.cve_summary.trend}</div>
+                    <div className="text-slate-200">Trend</div>
+                    <div className="text-slate-100 font-semibold capitalize">{assessment.cve_summary.trend}</div>
                   </div>
                 </div>
                 {assessment.cve_summary.citation && (
-                  <div className="mt-3 text-xs text-slate-500 italic">{assessment.cve_summary.citation}</div>
+                  <div className="mt-3 text-xs text-slate-300 italic">{assessment.cve_summary.citation}</div>
                 )}
               </div>
 
               {/* Incidents */}
-              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+              <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                 <h4 className="text-sm text-cyan-400 mb-3">Incidents ({assessment.incidents.source_label})</h4>
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <div className="text-slate-400">Data Breaches</div>
-                    <div className="text-slate-200 font-semibold">{assessment.incidents.breach_count}</div>
+                    <div className="text-slate-200">Data Breaches</div>
+                    <div className="text-slate-100 font-semibold">{assessment.incidents.breach_count}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Total Incidents</div>
-                    <div className="text-slate-200 font-semibold">{assessment.incidents.incidents.length}</div>
+                    <div className="text-slate-200">Total Incidents</div>
+                    <div className="text-slate-100 font-semibold">{assessment.incidents.incidents.length}</div>
                   </div>
                 </div>
                 {assessment.incidents.incidents.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {assessment.incidents.incidents.map((incident, idx) => (
-                      <div key={idx} className="text-xs text-slate-300 border-l-2 border-amber-500/50 pl-2">
+                      <div key={idx} className="text-xs text-slate-100 border-l-2 border-amber-500/50 pl-2">
                         <div className="font-semibold">{incident.incident_type} - {incident.severity}</div>
-                        {incident.incident_date && <div className="text-slate-400">{incident.incident_date}</div>}
-                        <div className="text-slate-400 mt-1">{incident.description}</div>
+                        {incident.incident_date && <div className="text-slate-200">{incident.incident_date}</div>}
+                        <div className="text-slate-200 mt-1">{incident.description}</div>
                         {incident.source_url && (
                           <a href={incident.source_url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline text-[10px]">
                             Source
@@ -403,9 +403,9 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
               </div>
 
               {/* Compliance */}
-              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+              <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                 <h4 className="text-sm text-cyan-400 mb-3">Compliance</h4>
-                <div className="space-y-2 text-xs text-slate-300">
+                <div className="space-y-2 text-xs text-slate-100">
                   <div>
                     <strong className="text-cyan-400">SOC2:</strong> {assessment.compliance.soc2_status}
                   </div>
@@ -427,7 +427,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
                       <strong className="text-cyan-400">ISO Certifications:</strong>
                       <ul className="mt-1 space-y-1 ml-4">
                         {assessment.compliance.iso_certifications.map((iso, idx) => (
-                          <li key={idx} className="text-slate-400">
+                          <li key={idx} className="text-slate-200">
                             {iso.certification_type} - {iso.status}
                             {iso.date_issued && ` (Issued: ${iso.date_issued})`}
                             {iso.expiry_date && ` (Expires: ${iso.expiry_date})`}
@@ -440,13 +440,13 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
               </div>
 
               {/* Data Handling */}
-              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+              <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                 <h4 className="text-sm text-cyan-400 mb-3">Data Handling ({assessment.data_handling.source_label})</h4>
-                <div className="space-y-2 text-xs text-slate-300">
+                <div className="space-y-2 text-xs text-slate-100">
                   <div>
                     <strong className="text-cyan-400">Encryption:</strong> {assessment.data_handling.encryption_claimed ? 'Stated' : 'Not stated'}
                     {assessment.data_handling.encryption_details && (
-                      <div className="text-slate-400 ml-4 mt-1">{assessment.data_handling.encryption_details}</div>
+                      <div className="text-slate-200 ml-4 mt-1">{assessment.data_handling.encryption_details}</div>
                     )}
                   </div>
                   {assessment.data_handling.data_retention && (
@@ -495,9 +495,9 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
 
               {/* Deployment Controls */}
               {assessment.deployment_controls && (
-                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+                <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                   <h4 className="text-sm text-cyan-400 mb-3">Deployment Controls</h4>
-                  <div className="text-xs text-slate-300 whitespace-pre-wrap">{assessment.deployment_controls}</div>
+                  <div className="text-xs text-slate-100 whitespace-pre-wrap">{assessment.deployment_controls}</div>
                 </div>
               )}
             </div>
@@ -510,15 +510,15 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
               Recommendations
             </h3>
             <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-4 md:p-6">
-              <div className="text-xs md:text-sm text-slate-300 mb-4 whitespace-pre-wrap">{assessment.rationale}</div>
+              <div className="text-xs md:text-sm text-white mb-4 whitespace-pre-wrap">{assessment.rationale}</div>
               {assessment.safer_alternatives.length > 0 && (
                 <div className="mt-4">
-                  <h4 className="text-sm text-cyan-400 mb-2">Safer Alternatives:</h4>
+                  <h4 className="text-sm text-white font-bold mb-2">Safer Alternatives:</h4>
                   <ul className="space-y-2">
                     {assessment.safer_alternatives.map((alt, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-xs md:text-sm">
-                        <span className="text-cyan-300">•</span>
-                        <span><strong className="text-cyan-300">{alt.product_name}</strong> by {alt.vendor_name} - {alt.rationale}</span>
+                      <li key={idx} className="flex items-start gap-2 text-xs md:text-sm text-white">
+                        <span className="text-white">•</span>
+                        <span><strong className="text-white font-bold">{alt.product_name}</strong> by <strong className="text-white font-bold">{alt.vendor_name}</strong> - {alt.rationale}</span>
                       </li>
                     ))}
                   </ul>
@@ -530,37 +530,37 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
           {/* Citations */}
           {assessment.all_citations && assessment.all_citations.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-base md:text-lg text-[rgb(206,206,206)] mb-4 flex items-center gap-2">
-                <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
-                Citations
-              </h3>
-              <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4">
+            <h3 className="text-base md:text-lg text-slate-100 mb-4 flex items-center gap-2">
+              <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
+              Citations
+            </h3>
+            <div className="bg-slate-700/50 backdrop-blur-sm border border-slate-600/50 rounded-lg p-4">
                 <div className="space-y-2">
                   {assessment.all_citations.map((citation, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs border-l-2 border-slate-600/50 pl-3 py-1">
-                      <span className="text-slate-500 font-mono flex-shrink-0">{idx + 1}.</span>
+                    <div key={idx} className="flex items-start gap-2 text-xs border-l-2 border-slate-500/50 pl-3 py-1">
+                      <span className="text-white font-mono flex-shrink-0 font-bold">{idx + 1}.</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            citation.source_label === 'independent' ? 'bg-green-900/50 text-green-300' :
-                            citation.source_label === 'vendor-stated' ? 'bg-blue-900/50 text-blue-300' :
-                            'bg-purple-900/50 text-purple-300'
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            citation.source_label === 'independent' ? 'bg-green-500/40 text-white border border-green-400/60' :
+                            citation.source_label === 'vendor-stated' ? 'bg-blue-500/40 text-white border border-blue-400/60' :
+                            'bg-purple-500/40 text-white border border-purple-400/60'
                           }`}>
                             {citation.source_label === 'vendor-stated' ? 'VENDOR' : citation.source_label.toUpperCase()}
                           </span>
-                          <span className="text-slate-400">[{citation.source_type}]</span>
+                          <span className="text-white font-bold">[{citation.source_type}]</span>
                         </div>
-                        <div className="mt-1 text-slate-300">{citation.claim}</div>
+                        <div className="mt-1 text-white">{citation.claim}</div>
                         <a 
                           href={citation.source_url} 
                           target="_blank" 
                           rel="noopener noreferrer" 
-                          className="text-cyan-400 hover:text-cyan-300 hover:underline break-all text-[10px] mt-1 inline-block"
+                          className="text-cyan-300 hover:text-cyan-200 hover:underline break-all text-[10px] mt-1 inline-block font-semibold"
                         >
                           {citation.source_url}
                         </a>
                         {citation.accessed_date && (
-                          <div className="text-slate-500 text-[10px] mt-1">Accessed: {citation.accessed_date}</div>
+                          <div className="text-white text-[10px] mt-1">Accessed: {citation.accessed_date}</div>
                         )}
                       </div>
                     </div>
@@ -572,7 +572,7 @@ export function ReportView({ query, assessment, onClose }: ReportViewProps) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-cyan-500/20 px-4 md:px-6 py-3 bg-slate-900/50 backdrop-blur-sm text-xs text-slate-400">
+        <div className="border-t border-cyan-500/20 px-4 md:px-6 py-3 bg-slate-800/50 backdrop-blur-sm text-xs text-slate-200">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
             <span>Generated on {new Date(assessment.assessment_timestamp).toLocaleString()}</span>
             <span className="text-cyan-400">CISO Security Assessor v1.0</span>

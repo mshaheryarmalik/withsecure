@@ -8,6 +8,7 @@ interface PhaseCardProps {
     description: string;
     status: 'pending' | 'active' | 'completed' | 'error';
     progress?: number;
+    currentStep?: string;
   };
   position: { x: number; y: number };
   onClick: () => void;
@@ -131,26 +132,39 @@ export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
   const getStatusColor = () => {
     switch (phase.status) {
       case 'active':
-        return 'from-slate-400 to-slate-500';
+        return 'from-yellow-400 to-yellow-500'; // Yellow for processing
       case 'completed':
-        return 'from-slate-500 to-slate-600';
+        return 'from-green-400 to-green-500'; // Green for success
       case 'error':
-        return 'from-red-400 to-red-500';
+        return 'from-red-400 to-red-500'; // Red for failure
       default:
-        return 'from-slate-700 to-slate-800';
+        return 'from-slate-500 to-slate-600'; // Grey for pending/start
     }
   };
 
   const getBorderColor = () => {
     switch (phase.status) {
       case 'active':
-        return 'border-slate-600';
+        return 'border-yellow-500/50';
       case 'completed':
-        return 'border-slate-700';
+        return 'border-green-500/50';
       case 'error':
-        return 'border-red-600';
+        return 'border-red-500/50';
       default:
-        return 'border-slate-800';
+        return 'border-slate-600/50';
+    }
+  };
+
+  const getIconColor = () => {
+    switch (phase.status) {
+      case 'active':
+        return 'text-black'; // Black works well on yellow
+      case 'completed':
+        return 'text-white'; // White on green for better contrast
+      case 'error':
+        return 'text-white'; // White on red for better contrast
+      default:
+        return 'text-slate-200'; // Light color on grey for better contrast
     }
   };
 
@@ -204,22 +218,25 @@ export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
           {/* Header with icon */}
           <div className="flex items-start justify-between mb-2">
             <div className={`p-2 bg-gradient-to-br ${getStatusColor()} rounded-sm shadow-lg border border-slate-700/50 group-hover:border-slate-600/50 transition-all`}>
-              <Icon className="w-5 h-5 text-black" />
+              <Icon className={`w-5 h-5 ${getIconColor()}`} />
             </div>
             
             {/* Status indicator */}
             <div className="flex items-center gap-2">
               {phase.status === 'active' && (
                 <div className="relative">
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
-                  <div className="absolute inset-0 w-2 h-2 bg-slate-400 rounded-full animate-ping"></div>
+                  <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                  <div className="absolute inset-0 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
                 </div>
               )}
               {phase.status === 'completed' && (
-                <div className="w-2 h-2 bg-slate-500 rounded-full shadow-lg shadow-slate-500/50"></div>
+                <div className="w-2 h-2 bg-green-500 rounded-full shadow-lg shadow-green-500/50"></div>
               )}
               {phase.status === 'error' && (
                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              )}
+              {phase.status === 'pending' && (
+                <div className="w-2 h-2 bg-slate-500 rounded-full"></div>
               )}
               <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 group-hover:translate-x-0.5 transition-all" />
             </div>
@@ -230,10 +247,10 @@ export function PhaseCard({ phase, position, onClick }: PhaseCardProps) {
             {phase.name}
           </h3>
 
-          {/* Rotating status text */}
+          {/* Show current step or status */}
           <div className="flex-1 flex items-end">
             <p className="text-xs font-mono text-slate-500 group-hover:text-slate-400 transition-all duration-500 line-clamp-2">
-              {statusMessages[statusIndex]}
+              {phase.currentStep || (phase.status === 'active' ? statusMessages[statusIndex] : phase.status === 'completed' ? 'Complete' : phase.status === 'error' ? 'Error' : 'Pending')}
             </p>
           </div>
 
