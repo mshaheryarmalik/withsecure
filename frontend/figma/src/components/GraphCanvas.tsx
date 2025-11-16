@@ -18,19 +18,31 @@ interface Edge {
 interface GraphCanvasProps {
   nodes: Node[];
   edges: Edge[];
+  onNodeMove?: (nodeId: string, position: { x: number; y: number }) => void;
+  onCanvasPan?: (deltaX: number, deltaY: number) => void;
 }
 
-export function GraphCanvas({ nodes, edges }: GraphCanvasProps) {
+export function GraphCanvas({ nodes, edges, onNodeMove, onCanvasPan }: GraphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number>();
+  const [animationProgress, setAnimationProgress] = useState<{ [key: string]: number }>({});
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [wittyRemarkIndex, setWittyRemarkIndex] = useState(0);
+  const autoPanRef = useRef<boolean>(true); // Enable auto-panning by default
+
+  const GRID_SIZE = 10; // Grid cell size in pixels (very granular for precision)
 
   const wittyRemarks = [
-    '"Coffee brewing... I mean, threat intel loading!"',
-    '"Teaching AI to find bugs faster than devs create them..."',
-    '"Warming up the vulnerability scanner... beep boop!"',
-    '"Consulting with my security crystal ball..."'
+    "🔐 Scanning the dark web for your secrets...",
+    "🤖 Training AI on your vulnerabilities...",
+    "🕵️ Investigating suspicious dependencies...",
+    "⚡ Hacking the mainframe...",
+    "🎯 Targeting attack vectors...",
+    "🔬 Analyzing threat landscape...",
   ];
 
   // Cycle through witty remarks every 3 seconds
@@ -65,7 +77,181 @@ export function GraphCanvas({ nodes, edges }: GraphCanvasProps) {
     };
   }, []);
 
-  // Draw edges
+  // Animate new edges
+  useEffect(() => {
+    const newAnimationProgress = { ...animationProgress };
+    let hasNewEdge = false;
+
+    edges.forEach((edge) => {
+      const edgeKey = `${edge.from}-${edge.to}`;
+      if (!animationProgress[edgeKey]) {
+        newAnimationProgress[edgeKey] = 0;
+        hasNewEdge = true;
+      }
+    });
+
+    if (hasNewEdge) {
+      setAnimationProgress(newAnimationProgress);
+    }
+  }, [edges]);
+
+  // Animation loop for edges
+  useEffect(() => {
+    if (Object.keys(animationProgress).length === 0) return;
+
+    let lastTime = performance.now();
+    
+    const animate = (currentTime: number) => {
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
+
+      const newAnimationProgress = { ...animationProgress };
+      let needsUpdate = false;
+
+      for (const edgeKey in animationProgress) {
+        if (animationProgress[edgeKey] < 1) {
+          // Animate over 1000ms
+          const newProgress = Math.min(1, animationProgress[edgeKey] + deltaTime / 1000);
+          newAnimationProgress[edgeKey] = newProgress;
+          needsUpdate = true;
+        }
+      }
+
+      if (needsUpdate) {
+        setAnimationProgress(newAnimationProgress);
+        animationFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [animationProgress]);
+
+  // Calculate manhattan routing path
+  const getManhattanPath = (
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    nodeRadius: number
+  ): { x: number; y: number }[] => {
+    const points: { x: number; y: number }[] = [];
+    
+    // Determine direction
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    
+    // Start point (edge of from node)
+    const startX = fromX + (dx > 0 ? nodeRadius : dx < 0 ? -nodeRadius : 0);
+    const startY = fromY + (dy > 0 ? nodeRadius : dy < 0 ? -nodeRadius : 0);
+    
+    // End point (edge of to node)
+    const endX = toX - (dx > 0 ? nodeRadius : dx < 0 ? -nodeRadius : 0);
+    const endY = toY - (dy > 0 ? nodeRadius : dy < 0 ? -nodeRadius : 0);
+    
+    points.push({ x: startX, y: startY });
+    
+    // Calculate midpoints for manhattan routing
+    const midX = (startX + endX) / 2;
+    const midY = (startY + endY) / 2;
+    
+    // Simple 3-segment path
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal primary
+      points.push({ x: midX, y: startY });
+      points.push({ x: midX, y: endY });
+    } else {
+      // Vertical primary
+      points.push({ x: startX, y: midY });
+      points.push({ x: endX, y: midY });
+    }
+    
+    points.push({ x: endX, y: endY });
+    
+    return points;
+  };
+
+  // Draw smooth corners between line segments
+  const drawRoundedPath = (
+    ctx: CanvasRenderingContext2D,
+    points: { x: number; y: number }[],
+    radius: number,
+    progress: number
+  ) => {
+    if (points.length < 2) return { totalLength: 0, drawnLength: 0 };
+    
+    // Calculate total path length
+    let totalLength = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    const targetLength = totalLength * progress;
+    let drawnLength = 0;
+    
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const current = points[i];
+      const next = points[i + 1];
+      const afterNext = points[i + 2];
+      
+      const segmentLength = Math.sqrt(
+        Math.pow(next.x - current.x, 2) + Math.pow(next.y - current.y, 2)
+      );
+      
+      if (drawnLength + segmentLength <= targetLength) {
+        // Draw full segment
+        if (afterNext) {
+          // Draw line to point before corner
+          const dx1 = next.x - current.x;
+          const dy1 = next.y - current.y;
+          const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+          const cornerDist = Math.min(radius, len1 / 2);
+          
+          const beforeCornerX = next.x - (dx1 / len1) * cornerDist;
+          const beforeCornerY = next.y - (dy1 / len1) * cornerDist;
+          
+          ctx.lineTo(beforeCornerX, beforeCornerY);
+          
+          // Draw rounded corner
+          const dx2 = afterNext.x - next.x;
+          const dy2 = afterNext.y - next.y;
+          const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+          const afterCornerDist = Math.min(radius, len2 / 2);
+          
+          const afterCornerX = next.x + (dx2 / len2) * afterCornerDist;
+          const afterCornerY = next.y + (dy2 / len2) * afterCornerDist;
+          
+          ctx.quadraticCurveTo(next.x, next.y, afterCornerX, afterCornerY);
+        } else {
+          ctx.lineTo(next.x, next.y);
+        }
+        drawnLength += segmentLength;
+      } else {
+        // Draw partial segment
+        const remainingLength = targetLength - drawnLength;
+        const t = remainingLength / segmentLength;
+        const partialX = current.x + (next.x - current.x) * t;
+        const partialY = current.y + (next.y - current.y) * t;
+        ctx.lineTo(partialX, partialY);
+        drawnLength = targetLength;
+        break;
+      }
+    }
+    
+    return { totalLength, drawnLength, lastPoint: drawnLength >= totalLength ? points[points.length - 1] : null };
+  };
+
+  // Draw edges with animation
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || dimensions.width === 0 || dimensions.height === 0) return;
@@ -84,157 +270,151 @@ export function GraphCanvas({ nodes, edges }: GraphCanvasProps) {
     canvas.height = height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Clear canvas
+    // Clear canvas - no arrows needed
     ctx.clearRect(0, 0, width, height);
 
-    if (edges.length === 0 || nodes.length === 0) return;
+    // NO ARROW DRAWING - just clear canvas for nodes to be visible
+  }, [nodes, edges, dimensions, animationProgress, panOffset]);
 
-    // Node radius (half of node width ~100px)
-    const nodeRadius = 50;
-
-    // Draw each edge
-    edges.forEach((edge) => {
-      const fromNode = nodes.find(n => n.id === edge.from);
-      const toNode = nodes.find(n => n.id === edge.to);
+  const handleNodeDrag = (nodeId: string, position: { x: number; y: number }) => {
+    if (onNodeMove) {
+      // Snap to grid
+      const snappedX = Math.round(position.x / (GRID_SIZE / dimensions.width * 100)) * (GRID_SIZE / dimensions.width * 100);
+      const snappedY = Math.round(position.y / (GRID_SIZE / dimensions.height * 100)) * (GRID_SIZE / dimensions.height * 100);
       
-      if (!fromNode || !toNode) return;
-
-      // Calculate center positions (matching GraphNode percentage positioning)
-      const fromCenterX = (fromNode.position.x / 100) * width;
-      const fromCenterY = (fromNode.position.y / 100) * height;
-      const toCenterX = (toNode.position.x / 100) * width;
-      const toCenterY = (toNode.position.y / 100) * height;
-
-      // Calculate angle between nodes
-      const dx = toCenterX - fromCenterX;
-      const dy = toCenterY - fromCenterY;
-      const angle = Math.atan2(dy, dx);
-
-      // Calculate start and end points at node edges
-      const startX = fromCenterX + Math.cos(angle) * nodeRadius;
-      const startY = fromCenterY + Math.sin(angle) * nodeRadius;
-      const endX = toCenterX - Math.cos(angle) * nodeRadius;
-      const endY = toCenterY - Math.sin(angle) * nodeRadius;
-
-      // Calculate control points for bezier curve
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const controlOffset = Math.min(distance * 0.25, 80);
+      // Clamp to canvas bounds
+      let clampedX = Math.max(5, Math.min(95, snappedX));
+      let clampedY = Math.max(5, Math.min(95, snappedY));
       
-      const cp1X = startX + Math.cos(angle) * controlOffset;
-      const cp1Y = startY + Math.sin(angle) * controlOffset;
-      const cp2X = endX - Math.cos(angle) * controlOffset;
-      const cp2Y = endY - Math.sin(angle) * controlOffset;
-
-      // Draw the curve
-      ctx.beginPath();
-      ctx.moveTo(startX, startY);
-      ctx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
-
-      // Apply gradient
-      const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
-      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.8)'); // cyan-500
-      gradient.addColorStop(0.5, 'rgba(59, 130, 246, 0.8)'); // blue-500
-      gradient.addColorStop(1, 'rgba(139, 92, 246, 0.8)'); // purple-500
+      // Check for collisions with other nodes
+      const NODE_SIZE_PERCENT = 6; // Approximate node size in percentage
+      const COLLISION_PADDING = 2; // Extra spacing to prevent overlap
       
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+      for (const node of nodes) {
+        if (node.id === nodeId) continue; // Skip self
+        
+        const dx = Math.abs(clampedX - node.position.x);
+        const dy = Math.abs(clampedY - node.position.y);
+        
+        // If nodes are too close, don't update position
+        if (dx < NODE_SIZE_PERCENT + COLLISION_PADDING && dy < NODE_SIZE_PERCENT + COLLISION_PADDING) {
+          return; // Collision detected, don't move
+        }
+      }
+      
+      onNodeMove(nodeId, { x: clampedX, y: clampedY });
+    }
+  };
 
-      // Draw arrowhead
-      const arrowSize = 10;
-      const arrowAngle = Math.atan2(endY - cp2Y, endX - cp2X);
+  const handlePanStart = (e: React.MouseEvent) => {
+    setIsPanning(true);
+    setPanStart({ x: e.clientX, y: e.clientY });
+  };
 
-      ctx.beginPath();
-      ctx.moveTo(endX, endY);
-      ctx.lineTo(
-        endX - arrowSize * Math.cos(arrowAngle - Math.PI / 6),
-        endY - arrowSize * Math.sin(arrowAngle - Math.PI / 6)
-      );
-      ctx.lineTo(
-        endX - arrowSize * Math.cos(arrowAngle + Math.PI / 6),
-        endY - arrowSize * Math.sin(arrowAngle + Math.PI / 6)
-      );
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(139, 92, 246, 1)'; // purple-500
-      ctx.fill();
-    });
-  }, [nodes, edges, dimensions]);
+  const handlePanMove = (e: React.MouseEvent) => {
+    if (!isPanning) return;
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    setPanOffset({ x: panOffset.x + dx, y: panOffset.y + dy });
+    setPanStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handlePanEnd = () => {
+    setIsPanning(false);
+    if (onCanvasPan) {
+      onCanvasPan(panOffset.x, panOffset.y);
+    }
+  };
+
+  // Auto-pan to center on active node (or first node on initial load)
+  useEffect(() => {
+    if (!containerRef.current || dimensions.width === 0 || nodes.length === 0) return;
+    
+    // Find active node, or use first node if no active node
+    const activeNode = nodes.find(n => n.status === 'active') || nodes[0];
+    if (!activeNode) return;
+
+    // Calculate where the node currently is in pixels
+    const nodePixelX = (activeNode.position.x / 100) * dimensions.width;
+    
+    // Calculate the center of the viewport
+    const viewportCenterX = dimensions.width / 2;
+    
+    // Calculate the offset needed to center the node
+    const targetOffsetX = viewportCenterX - nodePixelX;
+    
+    // Smoothly animate to the new offset
+    setPanOffset(prev => ({
+      x: targetOffsetX,
+      y: 0 // Keep Y at 0 since all nodes are centered vertically
+    }));
+  }, [nodes, dimensions]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
-      {/* Animated grid background */}
+    <div ref={containerRef} className="relative w-full h-full bg-slate-950 overflow-hidden">
+      {/* Subtle grid background - Dark theme */}
       <div className="absolute inset-0 opacity-20" style={{
         backgroundImage: `
-          linear-gradient(to right, rgba(6, 182, 212, 0.1) 1px, transparent 1px),
-          linear-gradient(to bottom, rgba(6, 182, 212, 0.1) 1px, transparent 1px)
+          linear-gradient(to right, rgba(71, 85, 105, 0.3) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(71, 85, 105, 0.3) 1px, transparent 1px)
         `,
-        backgroundSize: '50px 50px'
+        backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`
       }}></div>
       
-      {/* Canvas for edges */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 pointer-events-none z-0"
-      />
-      
-      {/* Render nodes */}
-      {nodes.map((node) => (
-        <GraphNode
-          key={node.id}
-          id={node.id}
-          label={node.label}
-          status={node.status}
-          wittyRemark={node.wittyRemark}
-          details={node.details}
-          position={node.position}
+      {/* Canvas dragging overlay */}
+      <div
+        className={`absolute inset-0 z-5 ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handlePanStart}
+        onMouseMove={handlePanMove}
+        onMouseUp={handlePanEnd}
+        onMouseLeave={handlePanEnd}
+      >
+        {/* Canvas for edges */}
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 pointer-events-none z-0"
         />
-      ))}
+        
+        {/* Render nodes with sequential animation */}
+        <div className="absolute inset-0" style={{
+          transform: `translate(${panOffset.x}px, ${panOffset.y}px)`,
+          transition: isPanning ? 'none' : 'transform 0.2s ease-out'
+        }}>
+          {nodes.map((node, index) => (
+            <GraphNode
+              key={node.id}
+              id={node.id}
+              label={node.label}
+              status={node.status}
+              wittyRemark={node.wittyRemark}
+              details={node.details}
+              position={node.position}
+              animationDelay={index * 300}
+            />
+          ))}
+        </div>
 
-      {/* Empty state */}
-      {nodes.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center">
-            {/* 3D rotating shield spinner */}
-            <div className="relative w-24 h-24 mx-auto mb-6">
-              {/* Outer rotating ring */}
-              <div className="absolute inset-0 border-4 border-cyan-500/30 rounded-full animate-spin"></div>
-              
-              {/* Middle rotating ring - opposite direction */}
-              <div className="absolute inset-2 border-4 border-blue-500/40 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
-              
-              {/* Inner rotating ring */}
-              <div className="absolute inset-4 border-4 border-purple-500/30 rounded-full animate-spin" style={{ animationDuration: '2.5s' }}></div>
-              
-              {/* Center pulsing core */}
-              <div className="absolute inset-6 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full animate-pulse flex items-center justify-center shadow-lg shadow-cyan-500/50">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clipRule="evenodd" />
-                </svg>
+        {/* Empty state */}
+        {nodes.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center">
+              {/* Minimal spinner */}
+              <div className="relative w-16 h-16 mx-auto mb-4">
+                <div className="absolute inset-0 border-3 border-slate-800 rounded-full"></div>
+                <div className="absolute inset-0 border-3 border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
               </div>
               
-              {/* Orbiting dots */}
-              <div className="absolute inset-0 animate-spin" style={{ animationDuration: '2s' }}>
-                <div className="absolute top-0 left-1/2 w-2.5 h-2.5 bg-cyan-400 rounded-full -translate-x-1/2 shadow-lg shadow-cyan-400/50"></div>
+              {/* Witty remark */}
+              <div className="space-y-2">
+                <p className="text-slate-400">Initializing Security Matrix...</p>
+                <p className="text-xs text-slate-500 italic">
+                  {wittyRemarks[wittyRemarkIndex]}
+                </p>
               </div>
-              <div className="absolute inset-2 animate-spin" style={{ animationDuration: '2s', animationDelay: '0.66s' }}>
-                <div className="absolute top-0 left-1/2 w-2.5 h-2.5 bg-blue-500 rounded-full -translate-x-1/2 shadow-lg shadow-blue-500/50"></div>
-              </div>
-              <div className="absolute inset-4 animate-spin" style={{ animationDuration: '2s', animationDelay: '1.33s' }}>
-                <div className="absolute top-0 left-1/2 w-2.5 h-2.5 bg-cyan-500 rounded-full -translate-x-1/2 shadow-lg shadow-cyan-500/50"></div>
-              </div>
-            </div>
-            
-            {/* Witty remark */}
-            <div className="space-y-2">
-              <p className="text-xl text-cyan-400 animate-pulse">🔐 Initializing Security Matrix...</p>
-              <p className="text-sm text-slate-400 italic">
-                {wittyRemarks[wittyRemarkIndex]}
-              </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

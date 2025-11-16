@@ -89,26 +89,27 @@ export function ReportView({ query, onClose }: ReportViewProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-3 md:p-6">
       <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 rounded-xl shadow-2xl shadow-cyan-500/20 border border-cyan-500/20 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 md:px-6 py-4 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 rounded-lg border border-cyan-500/30">
-              <FileText className="w-6 h-6 text-cyan-400" />
+              <FileText className="w-5 h-5 md:w-6 md:h-6 text-cyan-400" />
             </div>
             <div>
-              <h2 className="text-xl text-cyan-300">Security Assessment Report</h2>
-              <p className="text-sm text-slate-400">{query}</p>
+              <h2 className="text-lg md:text-xl text-cyan-300">Security Assessment Report</h2>
+              <p className="text-xs md:text-sm text-slate-400">{query}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               onClick={handleDownload}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 text-sm"
             >
               <Download className="w-4 h-4" />
-              <span>Download Report</span>
+              <span className="hidden sm:inline">Download Report</span>
+              <span className="sm:hidden">Download</span>
             </button>
             <button
               onClick={onClose}
@@ -120,35 +121,35 @@ export function ReportView({ query, onClose }: ReportViewProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* Executive Summary */}
           <div className="mb-6">
-            <h3 className="text-lg text-cyan-300 mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Executive Summary
             </h3>
-            <div className="grid grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-4 hover:border-cyan-500/40 transition-all">
-                <div className="text-sm text-cyan-400 mb-1">Trust Score</div>
-                <div className="text-4xl text-cyan-300 mb-2">67</div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-3 md:p-4 hover:border-cyan-500/40 transition-all">
+                <div className="text-xs md:text-sm text-cyan-400 mb-1">Trust Score</div>
+                <div className="text-3xl md:text-4xl text-cyan-300 mb-2">67</div>
                 <div className="text-xs text-slate-400">Moderate Risk</div>
               </div>
-              <div className="bg-gradient-to-br from-red-900/30 to-red-800/30 backdrop-blur-sm border border-red-500/20 rounded-lg p-4 hover:border-red-500/40 transition-all">
-                <div className="text-sm text-red-400 mb-1">Critical CVEs</div>
-                <div className="text-4xl text-red-300 mb-2">3</div>
+              <div className="bg-gradient-to-br from-red-900/30 to-red-800/30 backdrop-blur-sm border border-red-500/20 rounded-lg p-3 md:p-4 hover:border-red-500/40 transition-all">
+                <div className="text-xs md:text-sm text-red-400 mb-1">Critical CVEs</div>
+                <div className="text-3xl md:text-4xl text-red-300 mb-2">3</div>
                 <div className="flex items-center gap-1 text-xs text-red-400">
                   <AlertTriangle className="w-3 h-3" />
                   <span>Immediate Action</span>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/30 backdrop-blur-sm border border-amber-500/20 rounded-lg p-4 hover:border-amber-500/40 transition-all">
-                <div className="text-sm text-amber-400 mb-1">Compliance</div>
-                <div className="text-4xl text-amber-300 mb-2">78%</div>
+              <div className="bg-gradient-to-br from-amber-900/30 to-amber-800/30 backdrop-blur-sm border border-amber-500/20 rounded-lg p-3 md:p-4 hover:border-amber-500/40 transition-all">
+                <div className="text-xs md:text-sm text-amber-400 mb-1">Compliance</div>
+                <div className="text-3xl md:text-4xl text-amber-300 mb-2">78%</div>
                 <div className="text-xs text-slate-400">SOC 2 Coverage</div>
               </div>
-              <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 backdrop-blur-sm border border-green-500/20 rounded-lg p-4 hover:border-green-500/40 transition-all">
-                <div className="text-sm text-green-400 mb-1">Patch Response</div>
-                <div className="text-4xl text-green-300 mb-2">14d</div>
+              <div className="bg-gradient-to-br from-green-900/30 to-green-800/30 backdrop-blur-sm border border-green-500/20 rounded-lg p-3 md:p-4 hover:border-green-500/40 transition-all">
+                <div className="text-xs md:text-sm text-green-400 mb-1">Patch Response</div>
+                <div className="text-3xl md:text-4xl text-green-300 mb-2">14d</div>
                 <div className="flex items-center gap-1 text-xs text-green-400">
                   <CheckCircle className="w-3 h-3" />
                   <span>Active Support</span>
@@ -158,18 +159,18 @@ export function ReportView({ query, onClose }: ReportViewProps) {
           </div>
 
           {/* Visualizations Grid */}
-          <div className="grid grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6">
             {/* Vulnerability Distribution */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Vulnerability Distribution
               </h4>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={vulnerabilityData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="name" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
+                  <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: '#1e293b', 
@@ -188,15 +189,15 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             </div>
 
             {/* Security Score Radar */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Security Score Breakdown
               </h4>
               <ResponsiveContainer width="100%" height={250}>
                 <RadarChart data={securityScoreData}>
                   <PolarGrid stroke="#334155" />
-                  <PolarAngleAxis dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                  <PolarAngleAxis dataKey="category" tick={{ fontSize: 9, fill: '#94a3b8' }} />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#334155" />
                   <Radar name="Score" dataKey="score" stroke="#06B6D4" fill="#06B6D4" fillOpacity={0.6} />
                   <Tooltip 
@@ -212,16 +213,16 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             </div>
 
             {/* Vulnerability Trend */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 6-Month Vulnerability Trend
               </h4>
               <ResponsiveContainer width="100%" height={250}>
                 <LineChart data={trendData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis dataKey="month" stroke="#94a3b8" />
-                  <YAxis stroke="#94a3b8" />
+                  <XAxis dataKey="month" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: '#1e293b', 
@@ -231,7 +232,7 @@ export function ReportView({ query, onClose }: ReportViewProps) {
                     }}
                   />
                   <Legend 
-                    wrapperStyle={{ color: '#94a3b8' }}
+                    wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }}
                   />
                   <Line type="monotone" dataKey="vulnerabilities" stroke="#EF4444" strokeWidth={2} name="Vulnerabilities" />
                   <Line type="monotone" dataKey="patches" stroke="#10B981" strokeWidth={2} name="Patches Released" />
@@ -240,8 +241,8 @@ export function ReportView({ query, onClose }: ReportViewProps) {
             </div>
 
             {/* Compliance Pie */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-4 hover:border-cyan-500/30 transition-all">
-              <h4 className="text-sm text-slate-300 mb-4 flex items-center gap-2">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 md:p-4 hover:border-cyan-500/30 transition-all">
+              <h4 className="text-xs md:text-sm text-slate-300 mb-4 flex items-center gap-2">
                 <div className="w-1 h-4 bg-cyan-500 rounded-full"></div>
                 Compliance Status
               </h4>
@@ -276,29 +277,29 @@ export function ReportView({ query, onClose }: ReportViewProps) {
 
           {/* Key Findings */}
           <div className="mb-6">
-            <h3 className="text-lg text-cyan-300 mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Key Findings
             </h3>
             <div className="space-y-3">
-              <div className="flex items-start gap-3 p-4 bg-red-950/30 backdrop-blur-sm border-l-4 border-red-500 rounded-lg hover:bg-red-950/50 transition-all">
-                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-3 md:p-4 bg-red-950/30 backdrop-blur-sm border-l-4 border-red-500 rounded-lg hover:bg-red-950/50 transition-all">
+                <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm text-red-300">Critical: CVE-2021-44228 (Log4Shell)</div>
+                  <div className="text-xs md:text-sm text-red-300">Critical: CVE-2021-44228 (Log4Shell)</div>
                   <div className="text-xs text-slate-400 mt-1">CVSS 10.0 - Remote Code Execution vulnerability. Immediate patching required.</div>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-4 bg-amber-950/30 backdrop-blur-sm border-l-4 border-amber-500 rounded-lg hover:bg-amber-950/50 transition-all">
-                <TrendingDown className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-3 md:p-4 bg-amber-950/30 backdrop-blur-sm border-l-4 border-amber-500 rounded-lg hover:bg-amber-950/50 transition-all">
+                <TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm text-amber-300">Compliance Gaps Identified</div>
+                  <div className="text-xs md:text-sm text-amber-300">Compliance Gaps Identified</div>
                   <div className="text-xs text-slate-400 mt-1">Missing controls in incident response and vendor management areas.</div>
                 </div>
               </div>
-              <div className="flex items-start gap-3 p-4 bg-green-950/30 backdrop-blur-sm border-l-4 border-green-500 rounded-lg hover:bg-green-950/50 transition-all">
-                <TrendingUp className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-3 md:p-4 bg-green-950/30 backdrop-blur-sm border-l-4 border-green-500 rounded-lg hover:bg-green-950/50 transition-all">
+                <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm text-green-300">Active Vendor Support</div>
+                  <div className="text-xs md:text-sm text-green-300">Active Vendor Support</div>
                   <div className="text-xs text-slate-400 mt-1">Average patch response time of 14 days. Regular security updates maintained.</div>
                 </div>
               </div>
@@ -307,12 +308,12 @@ export function ReportView({ query, onClose }: ReportViewProps) {
 
           {/* Recommendations */}
           <div>
-            <h3 className="text-lg text-cyan-300 mb-4 flex items-center gap-2">
+            <h3 className="text-base md:text-lg text-cyan-300 mb-4 flex items-center gap-2">
               <div className="w-1 h-5 bg-gradient-to-b from-cyan-400 to-blue-600 rounded-full"></div>
               Recommendations
             </h3>
-            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-6">
-              <ol className="space-y-3 text-sm text-slate-300">
+            <div className="bg-gradient-to-br from-cyan-900/20 to-blue-900/20 backdrop-blur-sm border border-cyan-500/20 rounded-lg p-4 md:p-6">
+              <ol className="space-y-3 text-xs md:text-sm text-slate-300">
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-6 h-6 bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-full flex-shrink-0 text-xs shadow-lg shadow-cyan-500/50">1</span>
                   <span><strong className="text-cyan-400">Immediate:</strong> Upgrade to version 2.17.1 or later to address critical vulnerabilities (CVE-2021-44228, CVE-2021-45046)</span>
@@ -335,8 +336,8 @@ export function ReportView({ query, onClose }: ReportViewProps) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-cyan-500/20 px-6 py-3 bg-slate-900/50 backdrop-blur-sm text-xs text-slate-400">
-          <div className="flex items-center justify-between">
+        <div className="border-t border-cyan-500/20 px-4 md:px-6 py-3 bg-slate-900/50 backdrop-blur-sm text-xs text-slate-400">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
             <span>Generated on {new Date().toLocaleString()}</span>
             <span className="text-cyan-400">CISO Security Assessor v1.0</span>
           </div>

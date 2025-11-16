@@ -210,18 +210,336 @@ certified. Some historical security incidents but strong compliance posture.
 
 ## Architecture
 
+### High-Level System Architecture
+
+The backend is a **CISO Security Assessment System** built on LangGraph that evaluates software products, URLs, or file hashes for security risks. It follows a **4-phase pipeline** architecture with 25+ security tools.
+
+```mermaid
+graph TB
+    subgraph "Entry Points"
+        API[FastAPI REST API<br/>app.py]
+        CLI[CLI Interface<br/>ciso_cli.py]
+    end
+    
+    subgraph "Core Orchestration Layer"
+        Graph[LangGraph Workflow<br/>ciso_assessor.py]
+        State[Assessment State<br/>security_state.py]
+        Config[Configuration<br/>configuration.py]
+    end
+    
+    subgraph "Tool Layer - 25+ Security Tools"
+        ER[Entity Resolution<br/>resolve_entity, detect_input_type]
+        VUL[Vulnerability DB<br/>lookup_cves, check_cisa_kev]
+        COMP[Vendor Compliance<br/>fetch_vendor_info, check_fedramp]
+        THREAT[Threat Intel<br/>malwarebazaar, urlhaus, otx]
+        INC[Incident Data<br/>haveibeenpwned, security news]
+        ADV[Advisories<br/>US-CERT, GitHub Advisories]
+        ALT[Alternatives<br/>search_alternatives]
+        COMM[Community<br/>reddit, stackoverflow, github]
+    end
+    
+    subgraph "AI Models"
+        Gemini[Google Gemini 2.0/2.5<br/>Classification, Analysis, Scoring]
+    end
+    
+    subgraph "External Data Sources"
+        NVD[NVD - CVE Database]
+        VT[VirusTotal]
+        HIBP[HaveIBeenPwned]
+        Tavily[Tavily Search API]
+        MB[MalwareBazaar]
+        UH[URLhaus]
+        OTX[AlienVault OTX]
+        FR[FedRAMP]
+    end
+    
+    API --> Graph
+    CLI --> Graph
+    Graph --> State
+    Graph --> Config
+    Graph --> ER
+    Graph --> VUL
+    Graph --> COMP
+    Graph --> THREAT
+    Graph --> INC
+    Graph --> ADV
+    Graph --> ALT
+    Graph --> COMM
+    Graph --> Gemini
+    
+    ER --> VT
+    ER --> Tavily
+    VUL --> NVD
+    COMP --> FR
+    THREAT --> MB
+    THREAT --> UH
+    THREAT --> OTX
+    INC --> HIBP
+    INC --> Tavily
+    
+    style Graph fill:#4CAF50
+    style State fill:#2196F3
+    style Gemini fill:#FF9800
+```
+
+### 4-Phase Assessment Pipeline
+
+The system processes each assessment through 4 sequential phases with conditional routing and parallel data collection:
+
+```mermaid
+flowchart TD
+    Start([User Input<br/>Product/URL/SHA1]) --> Cache{Check Cache?}
+    Cache -->|Hit| Return[Return Cached Result]
+    Cache -->|Miss| Phase1
+    
+    subgraph Phase1["🔍 PHASE 1: Entity Resolution"]
+        P1Start[Receive Input] --> DetectType{Detect Input Type}
+        DetectType -->|SHA1 Hash| VT[Query VirusTotal<br/>Get file reputation]
+        DetectType -->|URL| WebSearch[Tavily Web Search<br/>Analyze domain]
+        DetectType -->|Name| NameSearch[Tavily Search<br/>+ LLM Analysis]
+        
+        VT --> Resolve[resolve_entity_complete]
+        WebSearch --> Resolve
+        NameSearch --> Resolve
+        
+        Resolve --> Fill[Fill Missing Fields<br/>product_name, vendor_name,<br/>website, sha1_hash]
+        Fill --> Validate{Valid Entity?}
+        Validate -->|No| FailP1[Return Error:<br/>Insufficient Data]
+        Validate -->|Yes| P1Done[✓ Entity Resolved]
+    end
+    
+    P1Done --> Phase2
+    
+    subgraph Phase2["📊 PHASE 2: Software Classification"]
+        P2Start[Entity Data] --> LLM1[LLM Classification<br/>Gemini 2.0 Flash]
+        LLM1 --> Categories[Match Against 868<br/>Gartner Categories]
+        Categories --> Taxonomy[Software Taxonomy<br/>primary + secondary categories]
+        Taxonomy --> P2Done[✓ Classification Complete]
+    end
+    
+    P2Done --> Phase3
+    
+    subgraph Phase3["🔐 PHASE 3: Security Data Gathering"]
+        P3Start[Parallel Data Collection] --> V1[Version Detection<br/>lookup_latest_version]
+        V1 --> CVE[CVE Databases<br/>NVD, GitHub, US-CERT]
+        
+        P3Start --> Vendor[Vendor Compliance<br/>Security page, ToS,<br/>Privacy, DPA, FedRAMP]
+        P3Start --> Breach[Breach Data<br/>HaveIBeenPwned,<br/>Security News]
+        P3Start --> Threat[Threat Intel<br/>MalwareBazaar,<br/>URLhaus, AlienVault]
+        P3Start --> Company[Company Info<br/>WHOIS, Company Data]
+        P3Start --> Alts[Alternatives<br/>G2, AlternativeTo]
+        
+        CVE --> Aggregate[Aggregate All Data<br/>15+ Sources]
+        Vendor --> Aggregate
+        Breach --> Aggregate
+        Threat --> Aggregate
+        Company --> Aggregate
+        Alts --> Aggregate
+        
+        Aggregate --> P3Done[✓ Data Collection Complete]
+    end
+    
+    P3Done --> Phase4
+    
+    subgraph Phase4["🤖 PHASE 4: AI Analysis & Brief Generation"]
+        P4Start[All Security Data] --> Score[AI Risk Scoring<br/>Gemini 2.5 Pro]
+        Score --> Trust[Calculate Trust Score<br/>0-100]
+        Score --> Risk[Calculate Risk Score<br/>0-100]
+        
+        Trust --> Brief[Generate CISO Brief]
+        Risk --> Brief
+        
+        P4Start --> ExtractAlts[LLM Extract Alternatives<br/>From Phase 3 data]
+        ExtractAlts --> Brief
+        
+        P4Start --> BuildCite[Build Citations<br/>All sources]
+        BuildCite --> Brief
+        
+        Brief --> Confidence[Determine Confidence<br/>HIGH/MEDIUM/LOW]
+        Confidence --> Final[Final CISO Brief<br/>Structured JSON]
+        Final --> P4Done[✓ Assessment Complete]
+    end
+    
+    P4Done --> SaveCache[Save to Cache]
+    SaveCache --> Stream[Stream to Frontend<br/>SSE Events]
+    Stream --> End([Frontend Display])
+    
+    FailP1 --> End
+    Return --> End
+    
+    style Phase1 fill:#E3F2FD
+    style Phase2 fill:#F3E5F5
+    style Phase3 fill:#E8F5E9
+    style Phase4 fill:#FFF3E0
+    style FailP1 fill:#FFCDD2
+```
+
+### Tool Organization Structure
+
+All security tools are organized by category for maintainability and discoverability:
+
+```mermaid
+graph LR
+    subgraph "Tools Package (src/security_research_agent/tools/)"
+        Init[__init__.py<br/>Central Import Hub]
+        
+        subgraph "Entity Resolution"
+            ER1[resolve_entity]
+            ER2[resolve_entity_complete]
+            ER3[detect_input_type]
+            ER4[lookup_latest_version]
+        end
+        
+        subgraph "Vulnerability"
+            V1[lookup_cves]
+            V2[check_cisa_kev]
+            V3[lookup_github_advisories]
+        end
+        
+        subgraph "Vendor Compliance"
+            VC1[fetch_vendor_security_info]
+            VC2[fetch_terms_of_service]
+            VC3[fetch_privacy_policy]
+            VC4[fetch_dpa]
+            VC5[check_fedramp]
+        end
+        
+        subgraph "Threat Intel"
+            TI1[lookup_malwarebazaar]
+            TI2[lookup_urlhaus]
+            TI3[lookup_alienvault_otx]
+        end
+        
+        subgraph "Incidents"
+            I1[lookup_security_incidents]
+            I2[search_databreaches_net]
+        end
+        
+        subgraph "Advisories"
+            A1[search_us_cert_advisories]
+            A2[search_cert_cc_advisories]
+        end
+        
+        subgraph "Company Info"
+            C1[lookup_whois]
+            C2[search_company_info]
+        end
+        
+        subgraph "Community"
+            CO1[search_reddit_security]
+            CO2[search_github_issues]
+            CO3[search_stackoverflow]
+        end
+        
+        subgraph "Alternatives"
+            AL1[search_alternatives]
+            AL2[search_app_store_info]
+        end
+        
+        subgraph "News"
+            N1[search_security_news]
+        end
+    end
+    
+    Init --> ER1
+    Init --> V1
+    Init --> VC1
+    Init --> TI1
+    Init --> I1
+    Init --> A1
+    Init --> C1
+    Init --> CO1
+    Init --> AL1
+    Init --> N1
+    
+    style Init fill:#4CAF50
+```
+
+### State Management & Data Flow
+
+The system uses Pydantic models for type-safe state management throughout the assessment pipeline:
+
+```mermaid
+flowchart TD
+    subgraph "AssessmentState (Pydantic Model)"
+        Input[input_text: str<br/>product_version: Optional]
+        
+        Intermediate[Intermediate Results:<br/>• entity: Dict<br/>• taxonomy: Dict<br/>• cve_data: Dict<br/>• vendor_data: Dict<br/>• incident_data: Dict<br/>• additional_data: Dict]
+        
+        Output[Final Output:<br/>• ciso_brief: CISOBrief<br/>• messages: List<br/>• errors: List<br/>• status_messages: List]
+    end
+    
+    subgraph "CISOBrief Structure"
+        Core[Core Identity:<br/>• EntityResolution<br/>• SoftwareTaxonomy]
+        
+        Assessment[Assessment Components:<br/>• description<br/>• vendor_reputation<br/>• cve_summary<br/>• incidents<br/>• compliance<br/>• data_handling]
+        
+        Scores[Scoring:<br/>• trust_score: 0-100<br/>• risk_score: 0-100<br/>• rationale<br/>• confidence]
+        
+        Meta[Metadata:<br/>• citations: List<br/>• safer_alternatives: List<br/>• assessment_timestamp<br/>• insufficient_data_notes]
+    end
+    
+    Input --> Node1[Phase 1: Entity Resolution]
+    Node1 --> Intermediate
+    Intermediate --> Node2[Phase 2: Classification]
+    Node2 --> Intermediate
+    Intermediate --> Node3[Phase 3: Data Gathering]
+    Node3 --> Intermediate
+    Intermediate --> Node4[Phase 4: Brief Generation]
+    Node4 --> Output
+    
+    Node4 --> Core
+    Node4 --> Assessment
+    Node4 --> Scores
+    Node4 --> Meta
+    
+    Core --> FinalBrief[CISO Brief JSON/Markdown]
+    Assessment --> FinalBrief
+    Scores --> FinalBrief
+    Meta --> FinalBrief
+    
+    style Input fill:#BBDEFB
+    style Intermediate fill:#C8E6C9
+    style Output fill:#FFE0B2
+    style FinalBrief fill:#4CAF50
+```
+
+### Directory Structure
+
 ```
 src/security_research_agent/
-├── configuration.py      # Agent configuration
-├── security_state.py     # Pydantic models for CISO brief
-├── security_tools.py     # Entity resolution, CVE lookup, vendor scraping
-├── security_prompts.py   # CISO-focused prompts
-├── ciso_assessor.py     # Main LangGraph orchestration
-├── cache.py             # File-based assessment cache
-└── utils.py             # Shared utilities
+├── configuration.py           # Agent configuration & settings
+├── security_state.py          # Pydantic models for CISO brief
+├── security_prompts.py        # CISO-focused prompts
+├── ciso_assessor.py          # Main LangGraph orchestration
+├── cache.py                  # File-based assessment cache
+├── utils.py                  # Shared utilities
+├── debug_logger.py           # Structured logging
+└── tools/                    # Security assessment tools (25+)
+    ├── __init__.py           # Central tool registry
+    ├── entity_resolution.py  # Product/vendor identification
+    ├── vulnerability.py      # CVE & CISA KEV lookups
+    ├── vendor_compliance.py  # Security pages, ToS, certifications
+    ├── threat_intel.py       # Malware & threat intelligence
+    ├── incidents.py          # Breach & incident databases
+    ├── advisories.py         # US-CERT & CERT/CC advisories
+    ├── news.py              # Security news aggregation
+    ├── company_info.py      # WHOIS & company data
+    ├── community.py         # Reddit, GitHub, StackOverflow
+    └── alternatives.py      # Alternative product search
 
-ciso_cli.py              # Command-line interface
+app.py                        # FastAPI REST API with streaming
+ciso_cli.py                   # Command-line interface
 ```
+
+### Key Architecture Principles
+
+✅ **Scalability**: Parallel tool execution in Phase 3  
+✅ **Reliability**: Graceful error handling, conditional routing  
+✅ **Extensibility**: Easy to add new tools via category modules  
+✅ **Transparency**: Full citation tracking, source labeling  
+✅ **Performance**: Caching, streaming updates, optimized LLM calls  
+✅ **Type Safety**: Pydantic models throughout the pipeline
 
 ## Configuration
 

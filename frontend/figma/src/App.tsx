@@ -49,9 +49,23 @@ export default function App() {
   const logIdCounter = useRef(0);
 
   const [showReport, setShowReport] = useState(false);
-  const [currentQuery, setCurrentQuery] = useState('');
   const [reportReady, setReportReady] = useState(false);
+  const [currentQuery, setCurrentQuery] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleNodeMove = (nodeId: string, position: { x: number; y: number }) => {
+    setNodes(prevNodes => 
+      prevNodes.map(node => 
+        node.id === nodeId ? { ...node, position } : node
+      )
+    );
+  };
+
+  const handleCanvasPan = (deltaX: number, deltaY: number) => {
+    // Convert pixel delta to percentage delta
+    // This would pan all nodes together
+    console.log('Canvas panned:', deltaX, deltaY);
+  };
 
   // Set document title
   useEffect(() => {
@@ -85,6 +99,11 @@ export default function App() {
     setLogs([]);
     setIsProcessing(true);
 
+    // Sequential flow: strictly horizontal, evenly spaced
+    // Each node at y=50% (center), x increases by fixed amount
+    const NODE_SPACING = 20; // 20% spacing between nodes
+    const START_X = 15; // Start at 15%
+
     // Step 1: Initialize node
     setTimeout(() => {
       setNodes([{
@@ -93,7 +112,7 @@ export default function App() {
         status: 'active',
         wittyRemark: '🚀 Starting engines...',
         details: 'Initializing MCP and security databases',
-        position: { x: 10, y: 85 } // Bottom left
+        position: { x: START_X, y: 50 }
       }]);
       
       setLogs(prev => [...prev, {
@@ -115,7 +134,7 @@ export default function App() {
           status: 'completed',
           wittyRemark: '✅ Ready to roll!',
           details: 'Initializing MCP and security databases',
-          position: { x: 10, y: 85 } // Bottom left
+          position: { x: START_X, y: 50 }
         },
         {
           id: 'entity',
@@ -123,7 +142,7 @@ export default function App() {
           status: 'active',
           wittyRemark: '🔍 Hunting for targets...',
           details: 'Searching databases for matching entities',
-          position: { x: 25, y: 50 } // Left-center
+          position: { x: START_X + NODE_SPACING, y: 50 }
         }
       ]);
       
@@ -141,7 +160,7 @@ export default function App() {
       }]);
     }, 2000);
 
-    // Step 3: Complete entity, add CVE search at top
+    // Step 3: Complete entity, add CVE search
     setTimeout(() => {
       setNodes([
         {
@@ -150,7 +169,7 @@ export default function App() {
           status: 'completed',
           wittyRemark: '✅ Ready to roll!',
           details: 'Initializing MCP and security databases',
-          position: { x: 10, y: 85 }
+          position: { x: START_X, y: 50 }
         },
         {
           id: 'entity',
@@ -158,7 +177,7 @@ export default function App() {
           status: 'completed',
           wittyRemark: '🎯 Entity identified!',
           details: 'Searching databases for matching entities',
-          position: { x: 25, y: 50 }
+          position: { x: START_X + NODE_SPACING, y: 50 }
         },
         {
           id: 'cve-search',
@@ -166,7 +185,7 @@ export default function App() {
           status: 'active',
           wittyRemark: '🐛 Hunting vulnerabilities...',
           details: 'Querying National Vulnerability Database',
-          position: { x: 50, y: 15 } // Top
+          position: { x: START_X + NODE_SPACING * 2, y: 50 }
         }
       ]);
       
@@ -187,22 +206,45 @@ export default function App() {
 
     // Step 4: Complete CVE, add compliance check
     setTimeout(() => {
-      setNodes(prev => [
-        ...prev.map(n => n.id === 'cve-search' ? 
-          { ...n, status: 'completed' as const, wittyRemark: '✨ Found 23 CVEs!' } : n
-        ),
+      setNodes([
+        {
+          id: 'init',
+          label: 'Initialize Assessment',
+          status: 'completed',
+          wittyRemark: '✅ Ready to roll!',
+          details: 'Initializing MCP and security databases',
+          position: { x: START_X, y: 50 }
+        },
+        {
+          id: 'entity',
+          label: 'Entity Search',
+          status: 'completed',
+          wittyRemark: '🎯 Entity identified!',
+          details: 'Searching databases for matching entities',
+          position: { x: START_X + NODE_SPACING, y: 50 }
+        },
+        {
+          id: 'cve-search',
+          label: 'CVE Database Search',
+          status: 'completed',
+          wittyRemark: '✨ Found 23 CVEs!',
+          details: 'Querying National Vulnerability Database',
+          position: { x: START_X + NODE_SPACING * 2, y: 50 }
+        },
         {
           id: 'compliance-search',
           label: 'Compliance Check',
           status: 'active',
           wittyRemark: '📋 Checking regulations...',
           details: 'Analyzing compliance frameworks',
-          position: { x: 50, y: 85 } // Bottom
+          position: { x: START_X + NODE_SPACING * 3, y: 50 }
         }
       ]);
       
-      setEdges(prev => [...prev,
-        { from: 'entity', to: 'compliance-search' }
+      setEdges([
+        { from: 'init', to: 'entity' },
+        { from: 'entity', to: 'cve-search' },
+        { from: 'cve-search', to: 'compliance-search' }
       ]);
 
       setLogs(prev => [...prev, {
@@ -215,7 +257,7 @@ export default function App() {
       }]);
     }, 6000);
 
-    // Step 4b: Add compliance log
+    // Step 5: Add compliance log
     setTimeout(() => {
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
@@ -225,26 +267,57 @@ export default function App() {
         message: 'Analyzing compliance frameworks',
         status: 'info'
       }]);
-    }, 7000);
+    }, 6500);
 
-    // Step 5: Complete compliance, add vendor analysis
+    // Step 6: Complete compliance, add vendor analysis
     setTimeout(() => {
-      setNodes(prev => [
-        ...prev.map(n => n.id === 'compliance-search' ? 
-          { ...n, status: 'completed' as const, wittyRemark: '⚠️ Some gaps found!' } : n
-        ),
+      setNodes([
+        {
+          id: 'init',
+          label: 'Initialize Assessment',
+          status: 'completed',
+          wittyRemark: '✅ Ready to roll!',
+          details: 'Initializing MCP and security databases',
+          position: { x: START_X, y: 50 }
+        },
+        {
+          id: 'entity',
+          label: 'Entity Search',
+          status: 'completed',
+          wittyRemark: '🎯 Entity identified!',
+          details: 'Searching databases for matching entities',
+          position: { x: START_X + NODE_SPACING, y: 50 }
+        },
+        {
+          id: 'cve-search',
+          label: 'CVE Database Search',
+          status: 'completed',
+          wittyRemark: '✨ Found 23 CVEs!',
+          details: 'Querying National Vulnerability Database',
+          position: { x: START_X + NODE_SPACING * 2, y: 50 }
+        },
+        {
+          id: 'compliance-search',
+          label: 'Compliance Check',
+          status: 'completed',
+          wittyRemark: '⚠️ Some gaps found!',
+          details: 'Analyzing compliance frameworks',
+          position: { x: START_X + NODE_SPACING * 3, y: 50 }
+        },
         {
           id: 'vendor-search',
           label: 'Vendor Analysis',
           status: 'active',
           wittyRemark: '🕵️ Investigating vendor...',
           details: 'Analyzing vendor reputation and response',
-          position: { x: 62, y: 50 } // Middle (receives from CVE and Compliance)
+          position: { x: START_X + NODE_SPACING * 4, y: 50 }
         }
       ]);
       
-      setEdges(prev => [...prev,
-        { from: 'cve-search', to: 'vendor-search' },
+      setEdges([
+        { from: 'init', to: 'entity' },
+        { from: 'entity', to: 'cve-search' },
+        { from: 'cve-search', to: 'compliance-search' },
         { from: 'compliance-search', to: 'vendor-search' }
       ]);
 
@@ -256,9 +329,9 @@ export default function App() {
         message: 'Compliance analysis completed - some gaps identified',
         status: 'completed'
       }]);
-    }, 9000);
+    }, 8000);
 
-    // Step 5b: Add vendor activity log
+    // Step 7: Add vendor activity log
     setTimeout(() => {
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
@@ -268,16 +341,68 @@ export default function App() {
         message: 'Analyzing vendor reputation and response',
         status: 'info'
       }]);
-    }, 10000);
+    }, 8500);
 
-    // Step 6: Complete vendor
+    // Step 8: Complete vendor, add synthesis
     setTimeout(() => {
-      setNodes(prev => prev.map(n => {
-        if (n.id === 'vendor-search') {
-          return { ...n, status: 'completed' as const, wittyRemark: '✅ Vendor profile ready!' };
+      setNodes([
+        {
+          id: 'init',
+          label: 'Initialize Assessment',
+          status: 'completed',
+          wittyRemark: '✅ Ready to roll!',
+          details: 'Initializing MCP and security databases',
+          position: { x: START_X, y: 50 }
+        },
+        {
+          id: 'entity',
+          label: 'Entity Search',
+          status: 'completed',
+          wittyRemark: '🎯 Entity identified!',
+          details: 'Searching databases for matching entities',
+          position: { x: START_X + NODE_SPACING, y: 50 }
+        },
+        {
+          id: 'cve-search',
+          label: 'CVE Database Search',
+          status: 'completed',
+          wittyRemark: '✨ Found 23 CVEs!',
+          details: 'Querying National Vulnerability Database',
+          position: { x: START_X + NODE_SPACING * 2, y: 50 }
+        },
+        {
+          id: 'compliance-search',
+          label: 'Compliance Check',
+          status: 'completed',
+          wittyRemark: '⚠️ Some gaps found!',
+          details: 'Analyzing compliance frameworks',
+          position: { x: START_X + NODE_SPACING * 3, y: 50 }
+        },
+        {
+          id: 'vendor-search',
+          label: 'Vendor Analysis',
+          status: 'completed',
+          wittyRemark: '✅ Vendor profile ready!',
+          details: 'Analyzing vendor reputation and response',
+          position: { x: START_X + NODE_SPACING * 4, y: 50 }
+        },
+        {
+          id: 'synthesis',
+          label: 'Final Synthesis',
+          status: 'active',
+          wittyRemark: '🧠 Connecting the dots...',
+          details: 'Synthesizing all research findings',
+          position: { x: START_X + NODE_SPACING * 5, y: 50 }
         }
-        return n;
-      }));
+      ]);
+      
+      setEdges([
+        { from: 'init', to: 'entity' },
+        { from: 'entity', to: 'cve-search' },
+        { from: 'cve-search', to: 'compliance-search' },
+        { from: 'compliance-search', to: 'vendor-search' },
+        { from: 'vendor-search', to: 'synthesis' }
+      ]);
 
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
@@ -287,42 +412,10 @@ export default function App() {
         message: 'Vendor profile ready',
         status: 'completed'
       }]);
-    }, 10500);
+    }, 10000);
 
-    // Step 6b: Add synthesis node that merges all
+    // Step 9: Add synthesis log
     setTimeout(() => {
-      setNodes(prev => {
-        // Check if synthesis already exists
-        const hasSynthesis = prev.some(n => n.id === 'synthesis');
-        
-        const updatedNodes = [...prev];
-        
-        // Only add synthesis if it doesn't exist
-        if (!hasSynthesis) {
-          updatedNodes.push({
-            id: 'synthesis',
-            label: 'Final Synthesis',
-            status: 'active',
-            wittyRemark: '🧠 Connecting the dots...',
-            details: 'Synthesizing all research findings',
-            position: { x: 75, y: 50 } // Right middle
-          });
-        }
-        
-        return updatedNodes;
-      });
-      
-      setEdges(prev => {
-        // Only add edge from vendor to synthesis (not from CVE and Compliance since they already connect to vendor)
-        const edgeKeys = prev.map(e => `${e.from}-${e.to}`);
-        const newEdge = { from: 'vendor-search', to: 'synthesis' };
-        
-        if (!edgeKeys.includes(`${newEdge.from}-${newEdge.to}`)) {
-          return [...prev, newEdge];
-        }
-        return prev;
-      });
-
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
         timestamp: getTimestamp(),
@@ -331,44 +424,77 @@ export default function App() {
         message: 'Synthesizing all research findings',
         status: 'info'
       }]);
-    }, 12000);
+    }, 10500);
 
-    // Step 7: Complete synthesis, generate report
+    // Step 10: Complete synthesis and generate report
     setTimeout(() => {
-      setNodes(prev => {
-        // Check if report already exists
-        const hasReport = prev.some(n => n.id === 'report');
-        
-        const updatedNodes = prev.map(n => {
-          if (n.id === 'synthesis') {
-            return { ...n, status: 'completed' as const, wittyRemark: '🎉 Analysis complete!' };
-          }
-          return n;
-        });
-        
-        // Only add report if it doesn't exist
-        if (!hasReport) {
-          updatedNodes.push({
-            id: 'report',
-            label: 'Generate Report',
-            status: 'completed',
-            wittyRemark: '📄 Report ready!',
-            details: 'Comprehensive security report generated',
-            position: { x: 85, y: 50 }
-          });
+      setNodes([
+        {
+          id: 'init',
+          label: 'Initialize Assessment',
+          status: 'completed',
+          wittyRemark: '✅ Ready to roll!',
+          details: 'Initializing MCP and security databases',
+          position: { x: START_X, y: 50 }
+        },
+        {
+          id: 'entity',
+          label: 'Entity Search',
+          status: 'completed',
+          wittyRemark: '🎯 Entity identified!',
+          details: 'Searching databases for matching entities',
+          position: { x: START_X + NODE_SPACING, y: 50 }
+        },
+        {
+          id: 'cve-search',
+          label: 'CVE Database Search',
+          status: 'completed',
+          wittyRemark: '✨ Found 23 CVEs!',
+          details: 'Querying National Vulnerability Database',
+          position: { x: START_X + NODE_SPACING * 2, y: 50 }
+        },
+        {
+          id: 'compliance-search',
+          label: 'Compliance Check',
+          status: 'completed',
+          wittyRemark: '⚠️ Some gaps found!',
+          details: 'Analyzing compliance frameworks',
+          position: { x: START_X + NODE_SPACING * 3, y: 50 }
+        },
+        {
+          id: 'vendor-search',
+          label: 'Vendor Analysis',
+          status: 'completed',
+          wittyRemark: '✅ Vendor profile ready!',
+          details: 'Analyzing vendor reputation and response',
+          position: { x: START_X + NODE_SPACING * 4, y: 50 }
+        },
+        {
+          id: 'synthesis',
+          label: 'Final Synthesis',
+          status: 'completed',
+          wittyRemark: '🎉 Analysis complete!',
+          details: 'Synthesizing all research findings',
+          position: { x: START_X + NODE_SPACING * 5, y: 50 }
+        },
+        {
+          id: 'report',
+          label: 'Generate Report',
+          status: 'completed',
+          wittyRemark: '📄 Report ready!',
+          details: 'Comprehensive security report generated',
+          position: { x: START_X + NODE_SPACING * 6, y: 50 }
         }
-        
-        return updatedNodes;
-      });
+      ]);
       
-      setEdges(prev => {
-        // Only add edge if it doesn't exist
-        const hasEdge = prev.some(e => e.from === 'synthesis' && e.to === 'report');
-        if (!hasEdge) {
-          return [...prev, { from: 'synthesis', to: 'report' }];
-        }
-        return prev;
-      });
+      setEdges([
+        { from: 'init', to: 'entity' },
+        { from: 'entity', to: 'cve-search' },
+        { from: 'cve-search', to: 'compliance-search' },
+        { from: 'compliance-search', to: 'vendor-search' },
+        { from: 'vendor-search', to: 'synthesis' },
+        { from: 'synthesis', to: 'report' }
+      ]);
 
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
@@ -381,9 +507,9 @@ export default function App() {
 
       setReportReady(true);
       setIsProcessing(false);
-    }, 13000);
+    }, 12000);
 
-    // Step 7b: Add final report log
+    // Step 10b: Add final report log
     setTimeout(() => {
       setLogs(prev => [...prev, {
         id: `log-${++logIdCounter.current}`,
@@ -393,7 +519,7 @@ export default function App() {
         message: 'Comprehensive security report generated',
         status: 'completed'
       }]);
-    }, 14000);
+    }, 13000);
   };
 
   const openReportInNewWindow = () => {
@@ -621,13 +747,13 @@ export default function App() {
     <div className="h-screen flex flex-col bg-slate-950" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Input Section with Logo - Aligned with split panels below */}
       <div className="border-b border-cyan-500/20 bg-slate-900 shadow-lg shadow-cyan-500/10">
-        <form onSubmit={handleSubmit} className="flex">
+        <form onSubmit={handleSubmit} className="flex flex-col md:flex-row">
           {/* Left side - matches 65% pipeline panel */}
-          <div className="w-[65%] flex items-center gap-3 px-6 py-4 border-r border-cyan-500/20">
+          <div className="w-full md:w-[65%] flex items-center gap-3 px-4 md:px-6 py-4 md:border-r border-cyan-500/20">
             {/* Logo */}
             <div className="flex items-center flex-shrink-0">
               <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg shadow-lg shadow-cyan-500/50">
-                <Shield className="w-6 h-6 text-white" />
+                <Shield className="w-5 h-5 md:w-6 md:h-6 text-white" />
               </div>
             </div>
             
@@ -638,20 +764,20 @@ export default function App() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Enter product name or vendor to assess (e.g., 'Apache Log4j 2.14' or 'Okta')"
-                className="w-full px-4 py-3 pr-16 bg-slate-800 border border-cyan-500/30 text-slate-100 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-4 py-3 pr-16 bg-slate-800 border border-cyan-500/30 text-slate-100 placeholder-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm md:text-base"
               />
               <button
                 type="submit"
                 disabled={!input.trim()}
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-md hover:from-cyan-400 hover:to-blue-500 disabled:from-slate-700 disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-lg shadow-cyan-500/30"
               >
-                <Send className="w-5 h-5" />
+                <Send className="w-4 h-4 md:w-5 md:h-5" />
               </button>
             </div>
           </div>
           
           {/* Right side - Real-time Processing Status */}
-          <div className="w-[35%] px-6 py-4 flex items-center justify-center">
+          <div className="w-full md:w-[35%] px-4 md:px-6 py-3 md:py-4 flex items-center justify-center border-t md:border-t-0 border-cyan-500/20">
             {isProcessing && (
               <div className="flex items-center gap-3 animate-fadeIn">
                 <div className="relative">
@@ -678,24 +804,24 @@ export default function App() {
       </div>
 
       {/* Main Content - Split View */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Panel - Graph Canvas (65%) */}
-        <div className="w-[65%] border-r border-cyan-500/20 flex flex-col">
+        <div className="w-full md:w-[65%] h-1/2 md:h-full md:border-r border-b md:border-b-0 border-cyan-500/20 flex flex-col">
           {/* Left Panel Header */}
-          <div className="px-6 py-3 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
+          <div className="px-4 md:px-6 py-3 border-b border-cyan-500/20 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse shadow-lg shadow-cyan-500/50"></div>
-              <h2 className="text-sm text-cyan-400 uppercase tracking-wide">Processing Pipeline</h2>
+              <h2 className="text-xs md:text-sm text-cyan-400 uppercase tracking-wide">Processing Pipeline</h2>
             </div>
           </div>
           {/* Canvas Area */}
           <div className="flex-1">
-            <GraphCanvas nodes={nodes} edges={edges} />
+            <GraphCanvas nodes={nodes} edges={edges} onNodeMove={handleNodeMove} onCanvasPan={handleCanvasPan} />
           </div>
         </div>
 
         {/* Right Panel - Perplexity-style Research (35%) */}
-        <div className="w-[35%]">
+        <div className="w-full md:w-[35%] h-1/2 md:h-full">
           <Citations isProcessing={isProcessing} logs={logs} />
         </div>
       </div>
@@ -705,19 +831,29 @@ export default function App() {
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 z-50">
           <button
             onClick={() => setShowReport(true)}
-            className="group relative px-6 py-3 bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white rounded-xl shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300 flex items-center gap-3"
+            className="group relative px-6 py-3 bg-slate-950 border border-slate-800 rounded-lg shadow-2xl hover:shadow-slate-700/50 hover:scale-105 transition-all duration-300 flex items-center gap-3 overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 via-green-400 to-teal-400 rounded-xl blur opacity-60 group-hover:opacity-80 transition-opacity"></div>
+            {/* Silver gradient background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 opacity-50"></div>
+            
+            {/* Animated glow effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-600 via-slate-500 to-slate-600 rounded-lg blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500"></div>
+            
+            {/* Shimmer effect on hover */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+            </div>
+            
             <div className="relative flex items-center gap-2">
-              <div className="p-1 bg-white/20 rounded-lg">
-                <FileText className="w-4 h-4" />
+              <div className="p-1 bg-gradient-to-br from-slate-400 to-slate-600 rounded-lg group-hover:from-slate-300 group-hover:to-slate-500 transition-all duration-300">
+                <FileText className="w-4 h-4 text-slate-950" />
               </div>
               <div>
-                <div className="text-xs opacity-90">Assessment Complete</div>
-                <div className="text-sm">View Full Report</div>
+                <div className="text-xs bg-gradient-to-r from-slate-400 to-slate-500 bg-clip-text text-transparent group-hover:from-slate-300 group-hover:to-slate-400 transition-all duration-300">Assessment Complete</div>
+                <div className="text-sm bg-gradient-to-r from-slate-300 to-slate-400 bg-clip-text text-transparent group-hover:from-slate-200 group-hover:to-slate-300 transition-all duration-300 font-mono">View Full Report</div>
               </div>
             </div>
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-500 rounded-full animate-pulse shadow-lg shadow-cyan-500/50"></div>
           </button>
         </div>
       )}
