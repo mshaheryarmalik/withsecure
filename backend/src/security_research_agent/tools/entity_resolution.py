@@ -287,7 +287,7 @@ def _resolve_from_url(url: str) -> Dict[str, Any]:
             model_name="gemini-2.5-flash",
             api_key=google_api_key,
             temperature=0,
-            thinking_budget=1024
+            thinking_budget=512
         )
         
         resolution_prompt = f"""You are analyzing a website URL to extract product and vendor information for a security assessment.

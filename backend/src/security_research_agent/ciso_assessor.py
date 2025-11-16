@@ -341,7 +341,7 @@ def classify_software_node(state: AssessmentState, config: RunnableConfig) -> Di
             model_name=model_name,
             api_key=api_key,
             temperature=0,
-            thinking_budget=1024
+            thinking_budget=512
         )
         
         # Format categories as a numbered list for better LLM processing
