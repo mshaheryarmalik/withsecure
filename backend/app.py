@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Optional, AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
@@ -60,7 +60,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
+
+# Add middleware to handle OPTIONS requests globally
+@app.middleware("http")
+async def cors_handler(request: Request, call_next):
+    # Handle OPTIONS preflight requests
+    if request.method == "OPTIONS":
+        return Response(
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "3600",
+            },
+        )
+    response = await call_next(request)
+    # Add CORS headers to all responses
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 
 class AssessmentRequest(BaseModel):
